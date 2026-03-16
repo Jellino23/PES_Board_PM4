@@ -1,25 +1,30 @@
 #include "Lid.h"
 
-Lid::Lid(PinName motorPin, PinName sensorTop, PinName sensorBottom)
-    : _motor(motorPin), _sensorOpen(sensorTop), _sensorClose(sensorBottom) {
-}
+const float gear_ratio_lidMotor = 100.0f; //Übersetzungsverhältnis
+const float kn_lidMotor = 140.0f / 12.0f; //Motorkonstante [rpm/V]
+const float voltage_max = 12.0f;
+
+Lid::Lid(PinName lidMotorPWM, PinName lidMotorEncA, PinName lidMotorEncB, PinName sensorOpen, PinName sensorClose)
+    : _lidMotor(lidMotorPWM, lidMotorEncA, lidMotorEncB, gear_ratio_lidMotor, kn_lidMotor, voltage_max), _sensorOpen(sensorOpen), _sensorClose(sensorClose) 
+
 
 void Lid::openLid() {
-    _motor.write(SPEED);
+    _lidMotor.setVelocity(SPEED);
 }
 
 void Lid::closeLid() {
-    _motor.write(0.0f);
+    _lidMotor.setVelocity(0.0f);
 }
 
 void Lid::stopLid() {
-    _motor.write(0.0f);
+    _lidMotor.setVelocity(0.0f);
 }
 
 bool Lid::isOpen() {
-    return _sensorOpen.read();
+    return _sensorOpen.read() == 0;
 }
 
 bool Lid::isClose() {
-    return _sensorClose.read();
+    return _sensorClose.read() == 0;
 }
+
