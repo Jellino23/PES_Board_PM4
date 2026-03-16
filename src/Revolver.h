@@ -1,5 +1,6 @@
 #pragma once              // Schutz gegen doppeltes Einlesen
 #include "mbed.h"         // Externe Abhängigkeiten die die Klasse braucht
+#include "Servo.h"
 
 #ifndef M_PIf
     #define M_PIf 3.14159265358979323846f // pi
@@ -11,7 +12,7 @@ class Revolver {         // Klassenname – entspricht dem Dateinamen
 
 public:                   // ← Alles hier ist von aussen sichtbar (main.cpp kann es nutzen)
 
-    Revolver(PinName motorPin, PinName sensorTop, PinName sensorBottom);
+    Revolver(PinName servoRevolverPin, PinName sensorTop, PinName sensorBottom);
     //  ↑ Konstruktor – gleicher Name wie Klasse, kein Rückgabetyp
     //    Parameter sagen: "ich brauche diese Pins um zu funktionieren"
 
@@ -23,8 +24,7 @@ public:                   // ← Alles hier ist von aussen sichtbar (main.cpp ka
 
 private:                  // ← Alles hier ist nach aussen versteckt
                           //   main.cpp kann _motor nicht direkt ansprechen
-
-    PwmOut    _motor;         // Die echte Hardware
+    Servo     _servoRevolver;         // Die echte Hardware
     DigitalIn _sensorVial;     // _ vorne = Konvention für private Variablen
     DigitalIn _sensorHole;
 
