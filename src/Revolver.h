@@ -1,34 +1,66 @@
-#pragma once              // Schutz gegen doppeltes Einlesen
-#include "mbed.h"         // Externe Abhängigkeiten die die Klasse braucht
-#include "Servo.h"
+#pragma once
+#include "mbed.h"
+#include "StepperTMC2209.h"
 
-#ifndef M_PIf
-    #define M_PIf 3.14159265358979323846f // pi
-#endif
+/**
+ * @brief Revolver-Achse.
+ *
+ * Revolverrad mit abwechselnden Vial- und Lochpositionen.
+ * Positionen werden über die Lichtschranke (TCST2103) erkannt.
+ *
+ * Sequenz der Slots auf dem Rad (unendlich wiederholt):
+ *   VIAL – LOCH – VIAL – VIAL – LOCH – …
+ *
+ * Zwischen zwei benachbarten Slots dreht der Revolver SLOT_STEPS Schritte.
+ * Die genaue Anzahl wird mechanisch durch die Konstruktion bestimmt und
+ * ist im Konstruktor konfigurierbar.
+ *
+ * Hardware:
+ *  - Schrittmotor mit TMC2209-Treiber
+ *  - Lichtschranke am Revolver-Vial-Slot (TCST2103, active LOW)
+ *  - Lichtschranke am Revolver-Loch-Slot (TCST2103, active LOW)
+ */
+class Revolver {
+public:
+    /**
+     * @param stepPin, dirPin, enPin  TMC2209-Pins
+     * @param sensorVial  Lichtschranke signalisiert Vial-Position
+     * @param sensorHole  Lichtschranke signalisiert Loch-Position
+     * @param slotSteps   Schritte zwischen zwei benachbarten Slots
+     */
+    Revolver(PinName stepPin, PinName dirPin, PinName enPin,
+             PinName sensorVial, PinName sensorHole,
+             int32_t slotSteps = 200 * 16 / 5); // example: 5 slots / rev
 
-
-
-class Revolver {         // Klassenname – entspricht dem Dateinamen
-
-public:                   // ← Alles hier ist von aussen sichtbar (main.cpp kann es nutzen)
-
-    Revolver(PinName servoRevolverPin, PinName sensorTop, PinName sensorBottom);
-    //  ↑ Konstruktor – gleicher Name wie Klasse, kein Rückgabetyp
-    //    Parameter sagen: "ich brauche diese Pins um zu funktionieren"
-
-    void turnCW();        // Nur die Unterschrift – kein { } kein Inhalt
-    void turnCCW();      // "Es gibt diese Funktion" – mehr nicht
+    // Nicht-blockierend drehen
+    void turnCW();
+    void turnCCW();
     void stop();
-    bool isAtVial();       // bool = gibt true/false zurück
-    bool isAtHole();
 
-private:                  // ← Alles hier ist nach aussen versteckt
-                          //   main.cpp kann _motor nicht direkt ansprechen
-    Servo     _servoRevolver;         // Die echte Hardware
-    DigitalIn _sensorVial;     // _ vorne = Konvention für private Variablen
-    DigitalIn _sensorHole;
+    // Sensor-Abfragen (TCST2103: active LOW)
+    bool isAtVial() const;
+    bool isAtHole() const;
 
-    static constexpr float SPEED = 0.3f;
-    //  ↑ static constexpr = Konstante die zur Kompilierzeit feststeht
-    //    gehört zur Klasse, nicht zu einem einzelnen Objekt
-};                        // ← Semikolon nicht vergessen!
+    // Blockierend zur nächsten Vial-Position drehen (CW)
+    void stepToNextVial();
+
+    // Blockierend zur nächsten Loch-Position drehen (CW)
+    void stepToNextHole();
+
+    // Homing: dreht bis erste Vial-Lichtschranke aktiv, setzt Null
+    void home();
+
+    // Schrittstand
+    int32_t getSteps() const;
+
+    static constexpr float SPEED = 0.5f; // [rot/s]
+
+private:
+    StepperTMC2209 m_stepper;
+    DigitalIn      m_sensorVial;
+    DigitalIn      m_sensorHole;
+    int32_t        m_slotSteps;
+
+    // Drive until sensorFn returns true (blocks calling thread)
+    void driveUntil(Callback<bool()> sensorFn, bool cw);
+};

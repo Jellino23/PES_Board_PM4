@@ -1,29 +1,49 @@
-#pragma once              // Schutz gegen doppeltes Einlesen
-#include "mbed.h"         // Externe Abhängigkeiten die die Klasse braucht
-#include "Servo.h"
+#pragma once
+#include "mbed.h"
+#include "StepperTMC2209.h"
 
-class RopeMotor {         // Klassenname – entspricht dem Dateinamen
+/**
+ * @brief Lift-Achse: fährt Vials hoch/runter, greift via Hubmagnet.
+ *
+ * Hardware:
+ *  - Schrittmotor mit TMC2209-Treiber (STEP / DIR / EN)
+ *  - Endschalter oben und unten (TCST2103, active LOW mit PullUp)
+ *  - Hubmagnet (active HIGH: Strom = Magnet angezogen = Vial gegriffen)
+ */
+class LiftMotor {
+public:
+    LiftMotor(PinName stepPin, PinName dirPin, PinName enPin,
+              PinName sensorTop, PinName sensorBottom,
+              PinName magnetPin);
 
-public:                   // ← Alles hier ist von aussen sichtbar (main.cpp kann es nutzen)
-
-    RopeMotor(PinName servoLiftPin, PinName sensorTop, PinName sensorBottom);
-    //  ↑ Konstruktor – gleicher Name wie Klasse, kein Rückgabetyp
-    //    Parameter sagen: "ich brauche diese Pins um zu funktionieren"
-
-    void moveUp();        // Nur die Unterschrift – kein { } kein Inhalt
-    void moveDown();      // "Es gibt diese Funktion" – mehr nicht
+    // Bewegung (nicht-blockierend)
+    void moveUp();
+    void moveDown();
     void stop();
-    bool isAtTop();       // bool = gibt true/false zurück
-    bool isAtBottom();
 
-private:                  // ← Alles hier ist nach aussen versteckt
-                          //   main.cpp kann _motor nicht direkt ansprechen
+    // Greifer
+    void grab();
+    void release();
+    bool isGrabbing() const;
 
-    Servo    _servoLift;         // Die echte Hardware
-    DigitalIn _sensorTop;     // _ vorne = Konvention für private Variablen
-    DigitalIn _sensorBottom;
+    // Endschalter (active LOW → read()==0 bedeutet aktiv)
+    bool isAtTop()    const;
+    bool isAtBottom() const;
 
-    static constexpr float SPEED = 0.3f;
-    //  ↑ static constexpr = Konstante die zur Kompilierzeit feststeht
-    //    gehört zur Klasse, nicht zu einem einzelnen Objekt
-};                        // ← Semikolon nicht vergessen!
+    // Homing: fährt hoch bis Endschalter oben, setzt Schritt-Nullpunkt
+    void home();
+
+    // Fahre auf absolute Position (Steps) mit Geschwindigkeit (rot/s)
+    void moveTo(int32_t steps, float velocity = SPEED);
+
+    // Gibt aktuellen Schrittstand zurück
+    int32_t getSteps() const;
+
+    static constexpr float SPEED = 1.0f; // [rot/s]
+
+private:
+    StepperTMC2209 m_stepper;
+    DigitalIn      m_sensorTop;
+    DigitalIn      m_sensorBottom;
+    DigitalOut     m_magnet;
+};

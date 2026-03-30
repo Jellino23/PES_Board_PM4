@@ -1,37 +1,56 @@
-#include "LiftMotor.h"    // Eigenen Header einbinden – kennt damit alle Deklarationen
-                          // kein #pragma once nötig
+#include "LiftMotor.h"
 
-// Konstruktor
-LiftMotor::LiftMotor(PinName servoLiftPin, PinName sensorTop, PinName sensorBottom)
-//  ↑ LiftMotor:: sagt "diese Funktion gehört zur Klasse LiftMotor"
-    : _servoLift(servoLiftPin), _sensorTop(sensorTop), _sensorBottom(sensorBottom)
-//    ↑ Initialisierungsliste – Hardware-Objekte werden hier mit den Pins erstellt
-//      muss so gemacht werden, PwmOut/DigitalIn können nicht "leer" erstellt werden
+LiftMotor::LiftMotor(PinName stepPin, PinName dirPin, PinName enPin,
+                     PinName sensorTop, PinName sensorBottom,
+                     PinName magnetPin)
+    : m_stepper(stepPin, dirPin, enPin, 200 * 16)
+    , m_sensorTop(sensorTop)
+    , m_sensorBottom(sensorBottom)
+    , m_magnet(magnetPin, 0)
 {
-    // Alles was beim Erstellen des Objekts passieren soll
-    _sensorTop.mode(PullUp);
-    _sensorBottom.mode(PullUp);
-    _servoLift.period(0.02f);
-    stop();               // eigene Funktion aufrufen ist erlaubt
+    m_sensorTop.mode(PullUp);
+    m_sensorBottom.mode(PullUp);
+    m_stepper.enable();
 }
 
-// Funktionen – immer mit KlassenName:: davor
-void LiftMotor::moveUp() {
-    _servoLift.write(0.5f + SPEED * 0.5f);
+void LiftMotor::moveUp()
+{
+    m_stepper.setVelocity(SPEED);   // positive = CW = up (adjust sign if needed)
 }
 
-void LiftMotor::moveDown() {
-    _motor.write(0.5f - SPEED * 0.5f);
+void LiftMotor::moveDown()
+{
+    m_stepper.setVelocity(-SPEED);
 }
 
-void LiftMotor::stop() {
-    _motor.write(0.5f);
+void LiftMotor::stop()
+{
+    m_stepper.setVelocity(0.0f);
 }
 
-bool LiftMotor::isAtTop() {
-    return _sensorTop.read() == 0;   // gibt true zurück wenn Sensor aktiv
+void LiftMotor::grab()    { m_magnet = 1; }
+void LiftMotor::release() { m_magnet = 0; }
+bool LiftMotor::isGrabbing() const { return m_magnet.read() == 1; }
+
+// TCST2103 – Phototransistor active LOW when beam is interrupted
+bool LiftMotor::isAtTop()    const { return m_sensorTop.read()    == 0; }
+bool LiftMotor::isAtBottom() const { return m_sensorBottom.read() == 0; }
+
+void LiftMotor::home()
+{
+    // Drive up until top sensor triggers, then reset step counter
+    moveUp();
+    while (!isAtTop()) { thread_sleep_for(5); }
+    stop();
+    // Step position zero = top
 }
 
-bool LiftMotor::isAtBottom() {
-    return _sensorBottom.read() == 0;
+void LiftMotor::moveTo(int32_t steps, float velocity)
+{
+    m_stepper.setSteps(steps, velocity);
+}
+
+int32_t LiftMotor::getSteps() const
+{
+    return m_stepper.getSteps();
 }

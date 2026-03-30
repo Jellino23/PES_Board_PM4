@@ -1,30 +1,49 @@
 #include "Lid.h"
 
-const float gear_ratio_lidMotor = 100.0f; //Übersetzungsverhältnis
-const float kn_lidMotor = 140.0f / 12.0f; //Motorkonstante [rpm/V]
-const float voltage_max = 12.0f;
+static constexpr float GEAR_RATIO_DEFAULT = 100.0f;
 
-Lid::Lid(PinName lidMotorPWM, PinName lidMotorEncA, PinName lidMotorEncB, PinName sensorOpen, PinName sensorClose)
-    : _lidMotor(lidMotorPWM, lidMotorEncA, lidMotorEncB, gear_ratio_lidMotor, kn_lidMotor, voltage_max), _sensorOpen(sensorOpen), _sensorClose(sensorClose) 
+Lid::Lid(PinName motorPWM, PinName encA, PinName encB,
+         float gearRatio, float kn,
+         PinName sensorClose, PinName sensorOpen,
+         float openRotations)
+    : m_motor(motorPWM, encA, encB, gearRatio, kn, VOLTAGE_MAX)
+    , m_sensorClose(sensorClose)
+    , m_sensorOpen(sensorOpen != NC ? sensorOpen : sensorClose) // fallback
+    , m_openRotations(openRotations)
+    , m_hasOpenSensor(sensorOpen != NC)
+{
+    m_sensorClose.mode(PullUp);
+    if (m_hasOpenSensor)
+        m_sensorOpen.mode(PullUp);
 
-
-void Lid::openLid() {
-    _lidMotor.setVelocity(SPEED);
+    m_motor.setMaxVelocity(SPEED);
+    m_motor.setVelocity(0.0f);
 }
 
-void Lid::closeLid() {
-    _lidMotor.setVelocity(0.0f);
+void Lid::openLid()
+{
+    // Fahre um openRotations in positive Richtung
+    m_motor.setRotationRelative(m_openRotations);
 }
 
-void Lid::stopLid() {
-    _lidMotor.setVelocity(0.0f);
+void Lid::closeLid()
+{
+    // Fahre in negative Richtung – State Machine stoppt beim Endschalter
+    m_motor.setVelocity(-SPEED);
 }
 
-bool Lid::isOpen() {
-    return _sensorOpen.read() == 0;
+void Lid::stopLid()
+{
+    m_motor.setVelocity(0.0f);
 }
 
-bool Lid::isClose() {
-    return _sensorClose.read() == 0;
-}
+// TCST2103 – active LOW
+bool Lid::isClosed() const { return m_sensorClose.read() == 0; }
 
+bool Lid::isOpen() const
+{
+    if (m_hasOpenSensor)
+        return m_sensorOpen.read() == 0;
+    // Schätzung über Motorposition wenn kein Sensor vorhanden
+    return (m_motor.getRotation() >= m_openRotations * 0.9f);
+}

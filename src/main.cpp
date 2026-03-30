@@ -1,524 +1,833 @@
+/**
+ * @file main.cpp
+ * @brief Vial-Messanlage – Hauptprogramm
+ *
+ * Steuerung:
+ *  - Mechanischer Knopf (USER_BUTTON): Toggle Start/Stop
+ *  - Touchscreen (SPI, ILI9163/ST7735 kompatibel): Status + Start/Stop Taste
+ *
+ * Revolver-Slot-Sequenz (von Slot 0 an):
+ *   [0] VIAL  [1] LOCH  [2] VIAL  [3] VIAL  [4] LOCH  (dann wiederholt)
+ *
+ * Die State Machine:
+ *  IDLE → HOMING → ROTATE_TO_VIAL → LIFT_DOWN_PICK →
+ *  GRAB → LIFT_UP → ROTATE_TO_HOLE → LIFT_DOWN_PLACE →
+ *  RELEASE → LIFT_UP_EMPTY → CLOSE_LID → MEASURING →
+ *  OPEN_LID → LIFT_DOWN_RETRIEVE → GRAB_AGAIN → LIFT_UP_RETURN →
+ *  ROTATE_BACK → LIFT_DOWN_RETURN → RELEASE_HOME → LIFT_UP_FINAL →
+ *  NEXT_VIAL_OR_DONE → DONE / IDLE (Nächster Zyklus)
+ */
+
 #include "mbed.h"
 #include "PESBoardPinMap.h"
 #include "DebounceIn.h"
+#include "LiftMotor.h"
+#include "Revolver.h"
+#include "Lid.h"
 
-// ================================================
-// STATE MACHINE DEFINITION
-// ================================================
-enum RobotState {
-    STATE_IDLE,               // 0 - Warte auf Start
-    STATE_INIT,               // 1 - Initialisierung der Anlage
-    STATE_ROPE_DOWN_PICKUP,   // 2 - Seil fährt runter zum Vial im Revolver
-    STATE_GRAB_VIAL,          // 3 - Vial wird angehoben / gegriffen
-    STATE_ROPE_UP_WITH_VIAL,  // 4 - Seil + Vial hoch
-    STATE_REVOLVER_ROTATE,    // 5 - Revolver dreht zum Messloch
-    STATE_LOWER_VIAL,         // 6 - Vial durch Loch runter in Messanlage
-    STATE_RELEASE_VIAL,       // 7 - Seil lässt Vial los
-    STATE_ROPE_UP_EMPTY,      // 8 - Leeres Seil fährt hoch
-    STATE_CLOSE_LID,          // 9 - Deckel schliesst sich
-    STATE_MEASURING,          // 10 - Messung läuft (im Dunkeln)
-    STATE_OPEN_LID,           // 11 - Deckel öffnet sich
-    STATE_ROPE_DOWN_RETRIEVE, // 12 - Seil fährt runter zum Vial holen
-    STATE_GRAB_VIAL_AGAIN,    // 13 - Vial wieder greifen
-    STATE_ROPE_UP_RETURN,     // 14 - Seil + Vial hoch zurück
-    STATE_REVOLVER_RETURN,    // 15 - Revolver dreht zurück zur Startposition
-    STATE_LOWER_VIAL_HOME,    // 16 - Vial zurück in Startposition ablassen
-    STATE_RELEASE_VIAL_HOME,  // 17 - Vial loslassen in Startposition
-    STATE_ROPE_UP_FINAL,      // 18 - Seil fährt final hoch
-    STATE_DONE,               // 19 - Zyklus abgeschlossen
-    STATE_ERROR               // 20 - Fehlerzustand
+// ============================================================
+// TOUCHSCREEN  (SPI-Display, z.B. JoyIT 1.8" 160×128)
+// Minimales SW-only Framebuffer-Display ohne externe Library.
+// Pixel-Ausgabe via SPI, DC/CS/RST via DigitalOut.
+// Befehle basieren auf ST7735 / ILI9163 Protokoll.
+// ============================================================
+#include "SPI.h"
+
+namespace Display {
+    // --- Pinbelegung anpassen ---
+    SPI        spi(PB_5, PB_4, PB_3);   // MOSI, MISO, SCLK
+    DigitalOut cs (PA_4, 1);
+    DigitalOut dc (PA_3, 0);
+    DigitalOut rst(PA_2, 1);
+
+    // ST7735-Farben (RGB565)
+    static constexpr uint16_t BLACK  = 0x0000;
+    static constexpr uint16_t WHITE  = 0xFFFF;
+    static constexpr uint16_t RED    = 0xF800;
+    static constexpr uint16_t GREEN  = 0x07E0;
+    static constexpr uint16_t BLUE   = 0x001F;
+    static constexpr uint16_t YELLOW = 0xFFE0;
+    static constexpr uint16_t GRAY   = 0x7BEF;
+
+    static constexpr int W = 128;
+    static constexpr int H = 160;
+
+    inline void cmd(uint8_t c) {
+        dc = 0; cs = 0;
+        spi.write(c);
+        cs = 1;
+    }
+    inline void data8(uint8_t d) {
+        dc = 1; cs = 0;
+        spi.write(d);
+        cs = 1;
+    }
+    inline void data16(uint16_t d) {
+        dc = 1; cs = 0;
+        spi.write(d >> 8);
+        spi.write(d & 0xFF);
+        cs = 1;
+    }
+
+    void init() {
+        spi.format(8, 0);
+        spi.frequency(8000000);
+        // Hardware-Reset
+        rst = 0; thread_sleep_for(50);
+        rst = 1; thread_sleep_for(120);
+        // Software-Reset + minimal init (ST7735S)
+        cmd(0x01); thread_sleep_for(150); // SWRESET
+        cmd(0x11); thread_sleep_for(250); // SLPOUT
+        cmd(0x3A); data8(0x05);           // COLMOD 16bit
+        cmd(0x36); data8(0x00);           // MADCTL
+        cmd(0x29);                         // DISPON
+        // Bildschirm leer (schwarz)
+        cmd(0x2A); data8(0); data8(0); data8(0); data8(W - 1);
+        cmd(0x2B); data8(0); data8(0); data8(0); data8(H - 1);
+        cmd(0x2C);
+        dc = 1; cs = 0;
+        for (int i = 0; i < W * H; i++) { spi.write(0x00); spi.write(0x00); }
+        cs = 1;
+    }
+
+    void setWindow(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1) {
+        cmd(0x2A); data8(0); data8(x0); data8(0); data8(x1);
+        cmd(0x2B); data8(0); data8(y0); data8(0); data8(y1);
+        cmd(0x2C);
+    }
+
+    void fillRect(int x, int y, int w, int h, uint16_t color) {
+        setWindow(x, y, x + w - 1, y + h - 1);
+        dc = 1; cs = 0;
+        for (int i = 0; i < w * h; i++) {
+            spi.write(color >> 8);
+            spi.write(color & 0xFF);
+        }
+        cs = 1;
+    }
+
+    // 5×7 Mini-Font (ASCII 32..126), kein externes File
+    static const uint8_t font5x7[][5] = {
+        {0x00,0x00,0x00,0x00,0x00}, // ' '
+        {0x00,0x00,0x5F,0x00,0x00}, // '!'
+        {0x00,0x07,0x00,0x07,0x00}, // '"'
+        {0x14,0x7F,0x14,0x7F,0x14}, // '#'
+        {0x24,0x2A,0x7F,0x2A,0x12}, // '$'
+        {0x23,0x13,0x08,0x64,0x62}, // '%'
+        {0x36,0x49,0x55,0x22,0x50}, // '&'
+        {0x00,0x05,0x03,0x00,0x00}, // '\''
+        {0x00,0x1C,0x22,0x41,0x00}, // '('
+        {0x00,0x41,0x22,0x1C,0x00}, // ')'
+        {0x08,0x2A,0x1C,0x2A,0x08}, // '*'
+        {0x08,0x08,0x3E,0x08,0x08}, // '+'
+        {0x00,0x50,0x30,0x00,0x00}, // ','
+        {0x08,0x08,0x08,0x08,0x08}, // '-'
+        {0x00,0x60,0x60,0x00,0x00}, // '.'
+        {0x20,0x10,0x08,0x04,0x02}, // '/'
+        {0x3E,0x51,0x49,0x45,0x3E}, // '0'
+        {0x00,0x42,0x7F,0x40,0x00}, // '1'
+        {0x42,0x61,0x51,0x49,0x46}, // '2'
+        {0x21,0x41,0x45,0x4B,0x31}, // '3'
+        {0x18,0x14,0x12,0x7F,0x10}, // '4'
+        {0x27,0x45,0x45,0x45,0x39}, // '5'
+        {0x3C,0x4A,0x49,0x49,0x30}, // '6'
+        {0x01,0x71,0x09,0x05,0x03}, // '7'
+        {0x36,0x49,0x49,0x49,0x36}, // '8'
+        {0x06,0x49,0x49,0x29,0x1E}, // '9'
+        {0x00,0x36,0x36,0x00,0x00}, // ':'
+        {0x00,0x56,0x36,0x00,0x00}, // ';'
+        {0x00,0x08,0x14,0x22,0x41}, // '<'
+        {0x14,0x14,0x14,0x14,0x14}, // '='
+        {0x41,0x22,0x14,0x08,0x00}, // '>'
+        {0x02,0x01,0x51,0x09,0x06}, // '?'
+        {0x30,0x49,0x79,0x41,0x3E}, // '@'
+        {0x7E,0x11,0x11,0x11,0x7E}, // 'A'
+        {0x7F,0x49,0x49,0x49,0x36}, // 'B'
+        {0x3E,0x41,0x41,0x41,0x22}, // 'C'
+        {0x7F,0x41,0x41,0x22,0x1C}, // 'D'
+        {0x7F,0x49,0x49,0x49,0x41}, // 'E'
+        {0x7F,0x09,0x09,0x09,0x01}, // 'F'
+        {0x3E,0x41,0x41,0x49,0x7A}, // 'G'
+        {0x7F,0x08,0x08,0x08,0x7F}, // 'H'
+        {0x00,0x41,0x7F,0x41,0x00}, // 'I'
+        {0x20,0x40,0x41,0x3F,0x01}, // 'J'
+        {0x7F,0x08,0x14,0x22,0x41}, // 'K'
+        {0x7F,0x40,0x40,0x40,0x40}, // 'L'
+        {0x7F,0x02,0x04,0x02,0x7F}, // 'M'
+        {0x7F,0x04,0x08,0x10,0x7F}, // 'N'
+        {0x3E,0x41,0x41,0x41,0x3E}, // 'O'
+        {0x7F,0x09,0x09,0x09,0x06}, // 'P'
+        {0x3E,0x41,0x51,0x21,0x5E}, // 'Q'
+        {0x7F,0x09,0x19,0x29,0x46}, // 'R'
+        {0x46,0x49,0x49,0x49,0x31}, // 'S'
+        {0x01,0x01,0x7F,0x01,0x01}, // 'T'
+        {0x3F,0x40,0x40,0x40,0x3F}, // 'U'
+        {0x1F,0x20,0x40,0x20,0x1F}, // 'V'
+        {0x7F,0x20,0x18,0x20,0x7F}, // 'W'
+        {0x63,0x14,0x08,0x14,0x63}, // 'X'
+        {0x03,0x04,0x78,0x04,0x03}, // 'Y'
+        {0x61,0x51,0x49,0x45,0x43}, // 'Z'
+        {0x00,0x00,0x7F,0x41,0x41}, // '['
+        {0x02,0x04,0x08,0x10,0x20}, // '\\'
+        {0x41,0x41,0x7F,0x00,0x00}, // ']'
+        {0x04,0x02,0x01,0x02,0x04}, // '^'
+        {0x40,0x40,0x40,0x40,0x40}, // '_'
+        {0x00,0x01,0x02,0x04,0x00}, // '`'
+        {0x20,0x54,0x54,0x54,0x78}, // 'a'
+        {0x7F,0x48,0x44,0x44,0x38}, // 'b'
+        {0x38,0x44,0x44,0x44,0x20}, // 'c'
+        {0x38,0x44,0x44,0x48,0x7F}, // 'd'
+        {0x38,0x54,0x54,0x54,0x18}, // 'e'
+        {0x08,0x7E,0x09,0x01,0x02}, // 'f'
+        {0x08,0x14,0x54,0x54,0x3C}, // 'g'
+        {0x7F,0x08,0x04,0x04,0x78}, // 'h'
+        {0x00,0x44,0x7D,0x40,0x00}, // 'i'
+        {0x20,0x40,0x44,0x3D,0x00}, // 'j'
+        {0x00,0x7F,0x10,0x28,0x44}, // 'k'
+        {0x00,0x41,0x7F,0x40,0x00}, // 'l'
+        {0x7C,0x04,0x18,0x04,0x78}, // 'm'
+        {0x7C,0x08,0x04,0x04,0x78}, // 'n'
+        {0x38,0x44,0x44,0x44,0x38}, // 'o'
+        {0x7C,0x14,0x14,0x14,0x08}, // 'p'
+        {0x08,0x14,0x14,0x18,0x7C}, // 'q'
+        {0x7C,0x08,0x04,0x04,0x08}, // 'r'
+        {0x48,0x54,0x54,0x54,0x20}, // 's'
+        {0x04,0x3F,0x44,0x40,0x20}, // 't'
+        {0x3C,0x40,0x40,0x40,0x7C}, // 'u'
+        {0x1C,0x20,0x40,0x20,0x1C}, // 'v'
+        {0x3C,0x40,0x30,0x40,0x3C}, // 'w'
+        {0x44,0x28,0x10,0x28,0x44}, // 'x'
+        {0x0C,0x50,0x50,0x50,0x3C}, // 'y'
+        {0x44,0x64,0x54,0x4C,0x44}, // 'z'
+    };
+
+    void drawChar(int x, int y, char c, uint16_t fg, uint16_t bg) {
+        if (c < 32 || c > 'z') c = ' ';
+        const uint8_t* glyph = font5x7[c - 32];
+        for (int col = 0; col < 5; col++) {
+            for (int row = 0; row < 7; row++) {
+                bool on = (glyph[col] >> row) & 1;
+                fillRect(x + col, y + row, 1, 1, on ? fg : bg);
+            }
+        }
+    }
+
+    void drawText(int x, int y, const char* s, uint16_t fg = WHITE, uint16_t bg = BLACK) {
+        while (*s) {
+            drawChar(x, y, *s++, fg, bg);
+            x += 6;
+            if (x > W - 6) { x = 0; y += 9; }
+        }
+    }
+
+    // Einfacher Button-Bereich prüfen (keine Touchscreen-IC – nur zur 
+    // Demonstration der Layoutstruktur; echter Touch-IC-Read kommt via SPI)
+    // Für echten XPT2046-Touch-IC: separate Klasse erforderlich.
+    struct Rect { int x, y, w, h; };
+
+    void drawButton(const Rect& r, const char* label, uint16_t bg = BLUE) {
+        fillRect(r.x, r.y, r.w, r.h, bg);
+        int tx = r.x + (r.w - static_cast<int>(strlen(label)) * 6) / 2;
+        int ty = r.y + (r.h - 7) / 2;
+        drawText(tx, ty, label, WHITE, bg);
+    }
+} // namespace Display
+
+// ============================================================
+// PIN MAP – Anpassen je nach tatsächlicher Verdrahtung!
+// ============================================================
+// Lift (Schrittmotor + TMC2209)
+#define LIFT_STEP   PB_D0
+#define LIFT_DIR    PB_D1
+#define LIFT_EN     PB_D2
+#define LIFT_TOP    PB_A0
+#define LIFT_BOT    PB_A1
+#define LIFT_MAGNET PB_D3
+
+// Revolver (Schrittmotor + TMC2209)
+// Zweiter Satz digitaler Ausgänge – z.B. über freie Pins
+#define REV_STEP    PC_6    // PB_PWM_M1 kann als GPIO genutzt werden wenn kein DC-Motor
+#define REV_DIR     PC_8
+#define REV_EN      PB_12
+#define REV_VIAL    PB_A2
+#define REV_HOLE    PB_A3
+
+// Deckel (DC-Motor M1)
+#define LID_PWM     PB_PWM_M1
+#define LID_ENCA    PB_ENC_A_M1
+#define LID_ENCB    PB_ENC_B_M1
+#define LID_CLOSE   PC_1    // Endschalter geschlossen
+// #define LID_OPEN NC     // kein zweiter Sensor
+
+// ============================================================
+// STATE MACHINE
+// ============================================================
+enum class State {
+    IDLE,
+    HOMING,
+    ROTATE_TO_VIAL,
+    LIFT_DOWN_PICK,
+    GRAB,
+    LIFT_UP,
+    ROTATE_TO_HOLE,
+    LIFT_DOWN_PLACE,
+    RELEASE,
+    LIFT_UP_EMPTY,
+    CLOSE_LID,
+    MEASURING,
+    OPEN_LID,
+    LIFT_DOWN_RETRIEVE,
+    GRAB_AGAIN,
+    LIFT_UP_RETURN,
+    ROTATE_BACK,
+    LIFT_DOWN_RETURN,
+    RELEASE_HOME,
+    LIFT_UP_FINAL,
+    DONE,
+    ERROR
 };
 
-// ================================================
-// CONSTANTS
-// ================================================
-const float ROPE_DOWN_SPEED     = 0.3f;  // m/s oder normiert 0..1
-const float ROPE_UP_SPEED       = 0.3f;
-const float REVOLVER_DEGREES    = 45.0f; // Grad pro Schritt
-const float LID_OPEN_POS        = 1.0f;  // normiert
-const float LID_CLOSED_POS      = 0.0f;
-const int   MEASURE_TIME_MS     = 5000;  // 5 Sekunden Messzeit
+static const char* stateName(State s) {
+    switch (s) {
+        case State::IDLE:               return "IDLE";
+        case State::HOMING:             return "HOMING";
+        case State::ROTATE_TO_VIAL:     return "ROT->VIAL";
+        case State::LIFT_DOWN_PICK:     return "LFT DN PK";
+        case State::GRAB:               return "GRAB";
+        case State::LIFT_UP:            return "LIFT UP";
+        case State::ROTATE_TO_HOLE:     return "ROT->HOLE";
+        case State::LIFT_DOWN_PLACE:    return "LFT DN PL";
+        case State::RELEASE:            return "RELEASE";
+        case State::LIFT_UP_EMPTY:      return "LIFT EMPT";
+        case State::CLOSE_LID:          return "CLOSE LID";
+        case State::MEASURING:          return "MEASURING";
+        case State::OPEN_LID:           return "OPEN LID";
+        case State::LIFT_DOWN_RETRIEVE: return "LFT DN RT";
+        case State::GRAB_AGAIN:         return "GRAB AGN";
+        case State::LIFT_UP_RETURN:     return "LIFT UP R";
+        case State::ROTATE_BACK:        return "ROT BACK";
+        case State::LIFT_DOWN_RETURN:   return "LFT DN RH";
+        case State::RELEASE_HOME:       return "REL HOME";
+        case State::LIFT_UP_FINAL:      return "LIFT FIN";
+        case State::DONE:               return "DONE";
+        case State::ERROR:              return "ERROR";
+    }
+    return "?";
+}
 
-// Timeouts (ms) – Sicherheitsgrenzen pro State
-const int   TIMEOUT_ROPE_MS     = 4000;
-const int   TIMEOUT_REVOLVER_MS = 3000;
-const int   TIMEOUT_LID_MS      = 2000;
-const int   TIMEOUT_MEASURE_MS  = MEASURE_TIME_MS + 500;
+// ============================================================
+// GLOBALE VARIABLEN
+// ============================================================
+static volatile bool g_running = false;  // Start/Stop toggle
+static volatile bool g_resetReq = false;
 
-// ================================================
-// GLOBAL STATE VARIABLES
-// ================================================
-bool do_execute_main_task = false;
-bool do_reset_all_once    = false;
+static State   g_state     = State::IDLE;
+static State   g_prevState = State::IDLE;
+static bool    g_entry     = true;
+static int     g_timerMs   = 0;
+static int     g_vialIndex = 0; // Aktuell gemessenes Vial (0-basiert)
 
-RobotState current_state  = STATE_IDLE;
-RobotState previous_state = STATE_IDLE;
-bool       state_entry     = true;  // true = erster Durchlauf in neuem State
-int        state_timer_ms  = 0;     // Zeit im aktuellen State
-bool       vial_in_hand    = false; // Tracking ob Seil Vial hält
+static constexpr int MEASURE_MS    = 5000;
+static constexpr int GRAB_WAIT_MS  = 300;
+static constexpr int TIMEOUT_LIFT  = 6000;
+static constexpr int TIMEOUT_REV   = 5000;
+static constexpr int TIMEOUT_LID   = 3000;
+static constexpr int MAIN_PERIOD   = 20;  // ms
 
-// ================================================
-// HARDWARE OBJECTS (Platzhalter – anpassen!)
-// ================================================
-DebounceIn user_button(BUTTON1);
-void toggle_do_execute_main_fcn();
+// ============================================================
+// DISPLAY-BUTTON LAYOUT
+// ============================================================
+static const Display::Rect BTN_STARTSTOP = {4, 130, 120, 24};
 
-DigitalOut user_led(LED1);
-DigitalOut led_busy(PB_9);          // Leuchtet wenn Anlage aktiv
+// ============================================================
+// HARDWARE OBJEKTE
+// ============================================================
+DigitalOut         ledBusy(LED1, 0);
+DebounceIn         userBtn(BUTTON1);
 
-// Endschalter (DigitalIn mit PullUp, active LOW)
-DigitalIn  sensor_rope_top(PA_0);       // Seil oben
-DigitalIn  sensor_rope_bottom(PA_1);    // Seil unten / Vial erreicht
-DigitalIn  sensor_lid_open(PA_4);       // Deckel offen
-DigitalIn  sensor_lid_closed(PB_0);     // Deckel geschlossen
-DigitalIn  sensor_revolver_pos(PC_1);   // Revolver in Position
+LiftMotor   lift(LIFT_STEP, LIFT_DIR, LIFT_EN,
+                 LIFT_TOP,  LIFT_BOT,
+                 LIFT_MAGNET);
 
-// Aktoren (PwmOut oder DigitalOut – je nach Hardware)
-PwmOut     motor_rope(PB_4);        // Seilmotor
-PwmOut     motor_revolver(PB_5);    // Revolvermotor
-PwmOut     actuator_lid(PB_6);      // Deckelantrieb
-DigitalOut gripper(PC_8);           // Greifer / Klemme am Seil
+Revolver    revolver(REV_STEP, REV_DIR, REV_EN,
+                     REV_VIAL, REV_HOLE);
 
-// ================================================
-// HELPER FUNCTIONS
-// ================================================
+Lid         lid(LID_PWM, LID_ENCA, LID_ENCB,
+                100.0f,   // gear ratio
+                140.0f / 12.0f, // kn [rpm/V]
+                LID_CLOSE);
 
-// Gibt den State-Namen als String zurück (für Debug-Output)
-const char* state_name(RobotState s) {
-    switch(s) {
-        case STATE_IDLE:               return "IDLE";
-        case STATE_INIT:               return "INIT";
-        case STATE_ROPE_DOWN_PICKUP:   return "ROPE_DOWN_PICKUP";
-        case STATE_GRAB_VIAL:          return "GRAB_VIAL";
-        case STATE_ROPE_UP_WITH_VIAL:  return "ROPE_UP_WITH_VIAL";
-        case STATE_REVOLVER_ROTATE:    return "REVOLVER_ROTATE";
-        case STATE_LOWER_VIAL:         return "LOWER_VIAL";
-        case STATE_RELEASE_VIAL:       return "RELEASE_VIAL";
-        case STATE_ROPE_UP_EMPTY:      return "ROPE_UP_EMPTY";
-        case STATE_CLOSE_LID:          return "CLOSE_LID";
-        case STATE_MEASURING:          return "MEASURING";
-        case STATE_OPEN_LID:           return "OPEN_LID";
-        case STATE_ROPE_DOWN_RETRIEVE: return "ROPE_DOWN_RETRIEVE";
-        case STATE_GRAB_VIAL_AGAIN:    return "GRAB_VIAL_AGAIN";
-        case STATE_ROPE_UP_RETURN:     return "ROPE_UP_RETURN";
-        case STATE_REVOLVER_RETURN:    return "REVOLVER_RETURN";
-        case STATE_LOWER_VIAL_HOME:    return "LOWER_VIAL_HOME";
-        case STATE_RELEASE_VIAL_HOME:  return "RELEASE_VIAL_HOME";
-        case STATE_ROPE_UP_FINAL:      return "ROPE_UP_FINAL";
-        case STATE_DONE:               return "DONE";
-        case STATE_ERROR:              return "ERROR";
-        default:                       return "UNKNOWN";
+// ============================================================
+// HILFSFUNKTIONEN
+// ============================================================
+static void transitionTo(State next)
+{
+    printf("[SM] %s -> %s\n", stateName(g_state), stateName(next));
+    g_prevState = g_state;
+    g_state     = next;
+    g_entry     = true;
+    g_timerMs   = 0;
+}
+
+static void stopAll()
+{
+    lift.stop();
+    lift.release();
+    revolver.stop();
+    lid.stopLid();
+}
+
+static void updateDisplay()
+{
+    // Status-Zeile
+    Display::fillRect(0, 0, Display::W, 12, Display::BLACK);
+    Display::drawText(2, 2, stateName(g_state),
+                      g_running ? Display::GREEN : Display::YELLOW);
+
+    // Vial-Zähler
+    char buf[20];
+    snprintf(buf, sizeof(buf), "Vial: %d", g_vialIndex + 1);
+    Display::fillRect(0, 14, Display::W, 12, Display::BLACK);
+    Display::drawText(2, 14, buf, Display::WHITE);
+
+    // Timer-Balken während Messung
+    if (g_state == State::MEASURING) {
+        int pct = (g_timerMs * 120) / MEASURE_MS;
+        Display::fillRect(4, 28, pct, 8, Display::BLUE);
+        Display::fillRect(4 + pct, 28, 120 - pct, 8, Display::GRAY);
+    }
+
+    // Start/Stop Button
+    Display::drawButton(BTN_STARTSTOP,
+                        g_running ? "STOP" : "START",
+                        g_running ? Display::RED : Display::GREEN);
+
+    // Error
+    if (g_state == State::ERROR) {
+        Display::fillRect(0, 40, Display::W, 80, Display::BLACK);
+        Display::drawText(4, 50, "! ERROR !", Display::RED);
+        Display::drawText(4, 62, "Press STOP", Display::WHITE);
     }
 }
 
-// Zustandswechsel mit Debug-Ausgabe
-void transition_to(RobotState next) {
-    printf("State: %s -> %s\n", state_name(current_state), state_name(next));
-    previous_state = current_state;
-    current_state  = next;
-    state_entry    = true;
-    state_timer_ms = 0;
+// ============================================================
+// TOGGLE-CALLBACK
+// ============================================================
+static void onButtonFall()
+{
+    g_running = !g_running;
+    if (g_running) {
+        g_resetReq = true;
+    }
 }
 
-// Alle Aktoren stoppen
-void stop_all_actuators() {
-    motor_rope.write(0.5f);      // 0.5 = Stop bei H-Brücke (anpassen!)
-    motor_revolver.write(0.5f);
-    actuator_lid.write(0.5f);
-}
-
-// ================================================
+// ============================================================
 // MAIN
-// ================================================
+// ============================================================
 int main()
 {
-    user_button.fall(&toggle_do_execute_main_fcn);
+    // Display initialisieren
+    Display::init();
+    Display::fillRect(0, 0, Display::W, Display::H, Display::BLACK);
+    Display::drawText(20, 70, "INIT...", Display::WHITE);
 
-    const int main_task_period_ms = 20;
-    Timer main_task_timer;
+    // Button-Callback
+    userBtn.fall(callback(&onButtonFall));
 
-    // Sensor Pull-Ups aktivieren
-    sensor_rope_top.mode(PullUp);
-    sensor_rope_bottom.mode(PullUp);
-    sensor_lid_open.mode(PullUp);
-    sensor_lid_closed.mode(PullUp);
-    sensor_revolver_pos.mode(PullUp);
+    // Haupt-Timer
+    Timer mainTimer;
+    mainTimer.start();
 
-    // PWM Frequenz setzen
-    motor_rope.period(0.02f);
-    motor_revolver.period(0.02f);
-    actuator_lid.period(0.02f);
+    printf("System bereit. Button oder Touch druecken.\n");
 
-    stop_all_actuators();
-    gripper = 0;
-
-    main_task_timer.start();
-
-    printf("System ready. Press blue button to start.\n");
+    updateDisplay();
 
     while (true) {
-        main_task_timer.reset();
+        mainTimer.reset();
 
-        // ============================================
-        // MAIN TASK ACTIVE
-        // ============================================
-        if (do_execute_main_task) {
-            led_busy = 1;
+        // --------------------------------------------------------
+        // RUNNING
+        // --------------------------------------------------------
+        if (g_running) {
+            ledBusy = 1;
 
-            // State-Timer hochzählen (20 ms pro Zyklus)
-            if (!state_entry)
-                state_timer_ms += main_task_period_ms;
+            if (!g_entry)
+                g_timerMs += MAIN_PERIOD;
 
-            // ==========================================
+            // ----------------------------------------------------
             // STATE MACHINE
-            // ==========================================
-            switch (current_state) {
+            // ----------------------------------------------------
+            switch (g_state) {
 
-                // ------------------------------------------
-                case STATE_IDLE:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Waiting for start command...\n");
-                        stop_all_actuators();
-                    }
-                    // Automatisch zur Initialisierung
-                    transition_to(STATE_INIT);
-                    break;
+            // ---- IDLE -------------------------------------------
+            case State::IDLE:
+                if (g_entry) {
+                    g_entry = false;
+                    stopAll();
+                    g_vialIndex = 0;
+                }
+                if (g_resetReq) {
+                    g_resetReq = false;
+                    transitionTo(State::HOMING);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_INIT:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Initializing system...\n");
-                        stop_all_actuators();
-                        gripper = 0;
-                    }
-                    // Prüfe ob Seil oben und Deckel offen
-                    if (sensor_rope_top.read() == 0 && sensor_lid_open.read() == 0) {
-                        printf("Init OK: Rope at top, lid open.\n");
-                        transition_to(STATE_ROPE_DOWN_PICKUP);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        printf("ERROR: Init timeout!\n");
-                        transition_to(STATE_ERROR);
-                    } else {
-                        // Fahre Seil hoch und öffne Deckel
-                        if (sensor_rope_top.read() != 0)
-                            motor_rope.write(0.5f + ROPE_UP_SPEED * 0.5f);
-                        if (sensor_lid_open.read() != 0)
-                            actuator_lid.write(LID_OPEN_POS);
-                    }
-                    break;
+            // ---- HOMING -----------------------------------------
+            case State::HOMING:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Homing...\n");
+                    lift.release();
+                    // Revolver zur Vial-Position homen
+                    revolver.turnCW();
+                    // Lift nach oben homen
+                    lift.moveUp();
+                }
+                // Warte bis beide Achsen in Referenzposition
+                if (lift.isAtTop() && revolver.isAtVial()) {
+                    lift.stop();
+                    revolver.stop();
+                    transitionTo(State::ROTATE_TO_VIAL);
+                } else if (g_timerMs > TIMEOUT_LIFT + TIMEOUT_REV) {
+                    transitionTo(State::ERROR);
+                } else {
+                    if (lift.isAtTop()) lift.stop();
+                    if (revolver.isAtVial()) revolver.stop();
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ROPE_DOWN_PICKUP:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Lowering rope to vial...\n");
-                        motor_rope.write(0.5f - ROPE_DOWN_SPEED * 0.5f); // Seil runter
-                    }
-                    if (sensor_rope_bottom.read() == 0) {
-                        motor_rope.write(0.5f); // Stop
-                        transition_to(STATE_GRAB_VIAL);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- ROTATE_TO_VIAL ---------------------------------
+            // Revolver steht bereits auf Vial (nach Homing oder Return)
+            case State::ROTATE_TO_VIAL:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Warte auf Vial-Position...\n");
+                    // Wir sind bereits in Vial-Position nach Homing
+                    // (bei nachfolgendem Zyklus: Revolver dreht zurück)
+                }
+                transitionTo(State::LIFT_DOWN_PICK);
+                break;
 
-                // ------------------------------------------
-                case STATE_GRAB_VIAL:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Grabbing vial...\n");
-                        gripper = 1; // Greifer schliessen
-                    }
-                    // Kurze Wartezeit für den Greifer
-                    if (state_timer_ms > 500) {
-                        vial_in_hand = true;
-                        transition_to(STATE_ROPE_UP_WITH_VIAL);
-                    }
-                    break;
+            // ---- LIFT_DOWN_PICK ---------------------------------
+            case State::LIFT_DOWN_PICK:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Lift faehrt runter zum Vial...\n");
+                    lift.moveDown();
+                }
+                if (lift.isAtBottom()) {
+                    lift.stop();
+                    transitionTo(State::GRAB);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ROPE_UP_WITH_VIAL:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Lifting vial up...\n");
-                        motor_rope.write(0.5f + ROPE_UP_SPEED * 0.5f); // Seil hoch
-                    }
-                    if (sensor_rope_top.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_REVOLVER_ROTATE);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- GRAB -------------------------------------------
+            case State::GRAB:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Vial greifen (Magnet AN)...\n");
+                    lift.grab();
+                }
+                if (g_timerMs > GRAB_WAIT_MS) {
+                    transitionTo(State::LIFT_UP);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_REVOLVER_ROTATE:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Rotating revolver %.1f degrees...\n", REVOLVER_DEGREES);
-                        motor_revolver.write(0.5f + 0.2f); // Vorwärts drehen
-                    }
-                    if (sensor_revolver_pos.read() == 0) {
-                        motor_revolver.write(0.5f);
-                        transition_to(STATE_LOWER_VIAL);
-                    } else if (state_timer_ms > TIMEOUT_REVOLVER_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- LIFT_UP ----------------------------------------
+            case State::LIFT_UP:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Lift mit Vial hoch...\n");
+                    lift.moveUp();
+                }
+                if (lift.isAtTop()) {
+                    lift.stop();
+                    transitionTo(State::ROTATE_TO_HOLE);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_LOWER_VIAL:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Lowering vial into measurement chamber...\n");
-                        motor_rope.write(0.5f - ROPE_DOWN_SPEED * 0.5f);
-                    }
-                    if (sensor_rope_bottom.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_RELEASE_VIAL);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- ROTATE_TO_HOLE ---------------------------------
+            // Revolver-Slot-Sequenz: VIAL–LOCH–VIAL–VIAL–LOCH–…
+            // Für Vial 0 (Slot 0=VIAL, Slot 1=LOCH): 1 Slot CW
+            // Für Vial 2 (Slot 2=VIAL, Slot 4=LOCH): 2 Slots CW
+            // Generell: immer zum nächsten LOCH-Slot vorfahren.
+            case State::ROTATE_TO_HOLE:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Revolver zum Loch drehen...\n");
+                    revolver.turnCW();
+                }
+                if (revolver.isAtHole()) {
+                    revolver.stop();
+                    transitionTo(State::LIFT_DOWN_PLACE);
+                } else if (g_timerMs > TIMEOUT_REV) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_RELEASE_VIAL:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Releasing vial...\n");
-                        gripper = 0; // Greifer öffnen
-                    }
-                    if (state_timer_ms > 500) {
-                        vial_in_hand = false;
-                        transition_to(STATE_ROPE_UP_EMPTY);
-                    }
-                    break;
+            // ---- LIFT_DOWN_PLACE --------------------------------
+            case State::LIFT_DOWN_PLACE:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Vial durch Loch in Messanlage...\n");
+                    lift.moveDown();
+                }
+                if (lift.isAtBottom()) {
+                    lift.stop();
+                    transitionTo(State::RELEASE);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ROPE_UP_EMPTY:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Pulling rope back up (empty)...\n");
-                        motor_rope.write(0.5f + ROPE_UP_SPEED * 0.5f);
-                    }
-                    if (sensor_rope_top.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_CLOSE_LID);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- RELEASE ----------------------------------------
+            case State::RELEASE:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Vial loslassen (Magnet AUS)...\n");
+                    lift.release();
+                }
+                if (g_timerMs > GRAB_WAIT_MS) {
+                    transitionTo(State::LIFT_UP_EMPTY);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_CLOSE_LID:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Closing lid for measurement...\n");
-                        actuator_lid.write(LID_CLOSED_POS);
-                    }
-                    if (sensor_lid_closed.read() == 0) {
-                        actuator_lid.write(0.5f);
-                        transition_to(STATE_MEASURING);
-                    } else if (state_timer_ms > TIMEOUT_LID_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- LIFT_UP_EMPTY ----------------------------------
+            case State::LIFT_UP_EMPTY:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Leeres Seil hoch...\n");
+                    lift.moveUp();
+                }
+                if (lift.isAtTop()) {
+                    lift.stop();
+                    transitionTo(State::CLOSE_LID);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_MEASURING:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Measuring... (darkness mode, %d ms)\n", MEASURE_TIME_MS);
-                        user_led = 0; // LED aus = dunkel!
-                    }
-                    if (state_timer_ms >= MEASURE_TIME_MS) {
-                        printf("Measurement complete.\n");
-                        user_led = 1;
-                        transition_to(STATE_OPEN_LID);
-                    }
-                    break;
+            // ---- CLOSE_LID --------------------------------------
+            case State::CLOSE_LID:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Deckel schliessen...\n");
+                    lid.closeLid();
+                }
+                if (lid.isClosed()) {
+                    lid.stopLid();
+                    transitionTo(State::MEASURING);
+                } else if (g_timerMs > TIMEOUT_LID) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_OPEN_LID:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Opening lid...\n");
-                        actuator_lid.write(LID_OPEN_POS);
-                    }
-                    if (sensor_lid_open.read() == 0) {
-                        actuator_lid.write(0.5f);
-                        transition_to(STATE_ROPE_DOWN_RETRIEVE);
-                    } else if (state_timer_ms > TIMEOUT_LID_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- MEASURING --------------------------------------
+            case State::MEASURING:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Messung laeuft (%d ms)...\n", MEASURE_MS);
+                    ledBusy = 0; // optional: LED aus = dunkel
+                }
+                if (g_timerMs >= MEASURE_MS) {
+                    ledBusy = 1;
+                    printf("Messung abgeschlossen.\n");
+                    transitionTo(State::OPEN_LID);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ROPE_DOWN_RETRIEVE:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Lowering rope to retrieve vial...\n");
-                        motor_rope.write(0.5f - ROPE_DOWN_SPEED * 0.5f);
-                    }
-                    if (sensor_rope_bottom.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_GRAB_VIAL_AGAIN);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- OPEN_LID ---------------------------------------
+            case State::OPEN_LID:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Deckel oeffnen...\n");
+                    lid.openLid();
+                }
+                if (lid.isOpen()) {
+                    lid.stopLid();
+                    transitionTo(State::LIFT_DOWN_RETRIEVE);
+                } else if (g_timerMs > TIMEOUT_LID) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_GRAB_VIAL_AGAIN:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Grabbing vial for return...\n");
-                        gripper = 1;
-                    }
-                    if (state_timer_ms > 500) {
-                        vial_in_hand = true;
-                        transition_to(STATE_ROPE_UP_RETURN);
-                    }
-                    break;
+            // ---- LIFT_DOWN_RETRIEVE -----------------------------
+            case State::LIFT_DOWN_RETRIEVE:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Lift runter, Vial holen...\n");
+                    lift.moveDown();
+                }
+                if (lift.isAtBottom()) {
+                    lift.stop();
+                    transitionTo(State::GRAB_AGAIN);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ROPE_UP_RETURN:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Lifting vial for return...\n");
-                        motor_rope.write(0.5f + ROPE_UP_SPEED * 0.5f);
-                    }
-                    if (sensor_rope_top.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_REVOLVER_RETURN);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- GRAB_AGAIN -------------------------------------
+            case State::GRAB_AGAIN:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Vial wieder greifen...\n");
+                    lift.grab();
+                }
+                if (g_timerMs > GRAB_WAIT_MS) {
+                    transitionTo(State::LIFT_UP_RETURN);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_REVOLVER_RETURN:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Rotating revolver back %.1f degrees...\n", REVOLVER_DEGREES);
-                        motor_revolver.write(0.5f - 0.2f); // Rückwärts
-                    }
-                    if (sensor_revolver_pos.read() == 0) {
-                        motor_revolver.write(0.5f);
-                        transition_to(STATE_LOWER_VIAL_HOME);
-                    } else if (state_timer_ms > TIMEOUT_REVOLVER_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- LIFT_UP_RETURN ---------------------------------
+            case State::LIFT_UP_RETURN:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Lift mit Vial hoch (Return)...\n");
+                    lift.moveUp();
+                }
+                if (lift.isAtTop()) {
+                    lift.stop();
+                    transitionTo(State::ROTATE_BACK);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_LOWER_VIAL_HOME:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Lowering vial back to start position...\n");
-                        motor_rope.write(0.5f - ROPE_DOWN_SPEED * 0.5f);
-                    }
-                    if (sensor_rope_bottom.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_RELEASE_VIAL_HOME);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- ROTATE_BACK ------------------------------------
+            // Revolver in Gegenrichtung zurück zur ursprünglichen Vial-Position
+            case State::ROTATE_BACK:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Revolver zurueck zur Vial-Position...\n");
+                    revolver.turnCCW(); // Gegenrichtung!
+                }
+                if (revolver.isAtVial()) {
+                    revolver.stop();
+                    transitionTo(State::LIFT_DOWN_RETURN);
+                } else if (g_timerMs > TIMEOUT_REV) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_RELEASE_VIAL_HOME:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Releasing vial at home position...\n");
-                        gripper = 0;
-                    }
-                    if (state_timer_ms > 500) {
-                        vial_in_hand = false;
-                        transition_to(STATE_ROPE_UP_FINAL);
-                    }
-                    break;
+            // ---- LIFT_DOWN_RETURN -------------------------------
+            case State::LIFT_DOWN_RETURN:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Vial in Startposition ablassen...\n");
+                    lift.moveDown();
+                }
+                if (lift.isAtBottom()) {
+                    lift.stop();
+                    transitionTo(State::RELEASE_HOME);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ROPE_UP_FINAL:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Returning rope to top...\n");
-                        motor_rope.write(0.5f + ROPE_UP_SPEED * 0.5f);
-                    }
-                    if (sensor_rope_top.read() == 0) {
-                        motor_rope.write(0.5f);
-                        transition_to(STATE_DONE);
-                    } else if (state_timer_ms > TIMEOUT_ROPE_MS) {
-                        transition_to(STATE_ERROR);
-                    }
-                    break;
+            // ---- RELEASE_HOME -----------------------------------
+            case State::RELEASE_HOME:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Vial in Startposition loslassen...\n");
+                    lift.release();
+                }
+                if (g_timerMs > GRAB_WAIT_MS) {
+                    transitionTo(State::LIFT_UP_FINAL);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_DONE:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("Cycle complete! Press button to run again.\n");
-                        stop_all_actuators();
-                    }
-                    // Taste nochmals drücken → neuer Zyklus
-                    // (do_execute_main_task wird durch Button auf false gesetzt,
-                    //  beim nächsten Start beginnt es wieder bei IDLE)
-                    break;
+            // ---- LIFT_UP_FINAL ----------------------------------
+            case State::LIFT_UP_FINAL:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("Lift final hoch...\n");
+                    lift.moveUp();
+                }
+                if (lift.isAtTop()) {
+                    lift.stop();
+                    transitionTo(State::DONE);
+                } else if (g_timerMs > TIMEOUT_LIFT) {
+                    transitionTo(State::ERROR);
+                }
+                break;
 
-                // ------------------------------------------
-                case STATE_ERROR:
-                    if (state_entry) {
-                        state_entry = false;
-                        printf("!!! ERROR STATE !!! All actuators stopped.\n");
-                        stop_all_actuators();
-                        gripper = 0;
-                        led_busy = 0;
-                    }
-                    // Schnelles Blinken als Fehlerindikator
-                    if (state_timer_ms % 200 < 100)
-                        user_led = 1;
-                    else
-                        user_led = 0;
-                    // Nur Reset durch Button-Neustart möglich
-                    break;
+            // ---- DONE -------------------------------------------
+            case State::DONE:
+                if (g_entry) {
+                    g_entry = false;
+                    g_vialIndex++;
+                    printf("Zyklus %d abgeschlossen. Revolver weiter...\n",
+                           g_vialIndex);
+                    stopAll();
+                    // Revolver zum nächsten Vial-Slot fahren
+                    // Slot-Sequenz: VIAL–LOCH–VIAL–VIAL–LOCH…
+                    // Nach Ablegen sind wir wieder auf einem VIAL-Slot.
+                    // Nächstes Vial ist je nach Sequenz 1 oder 2 Slots weiter CW.
+                    // Einfache Implementierung: drehe CW bis nächste Vial-Lichtschranke.
+                    revolver.turnCW();
+                }
+                // Warte auf nächste Vial-Position (überspringt Loch-Slots)
+                if (revolver.isAtVial()) {
+                    revolver.stop();
+                    transitionTo(State::LIFT_DOWN_PICK); // direkt nächstes Vial
+                }
+                // Optional: nach N Vialen aufhören
+                // if (g_vialIndex >= TOTAL_VIALS) { g_running = false; }
+                break;
 
-            } // end switch
+            // ---- ERROR ------------------------------------------
+            case State::ERROR:
+                if (g_entry) {
+                    g_entry = false;
+                    printf("!!! FEHLER !!! Alle Aktoren gestoppt.\n");
+                    stopAll();
+                    ledBusy = 0;
+                }
+                // Schnelles Blinken
+                ledBusy = (g_timerMs % 400 < 200) ? 1 : 0;
+                // Nur Reset durch erneutes Start/Stop möglich
+                break;
+
+            } // switch
 
         } else {
-            // ============================================
-            // MAIN TASK INACTIVE (Button nicht gedrückt)
-            // ============================================
-            if (do_reset_all_once) {
-                do_reset_all_once = false;
+            // --------------------------------------------------------
+            // NOT RUNNING
+            // --------------------------------------------------------
+            if (g_resetReq) {
+                g_resetReq = false;
                 // Reset State Machine
-                current_state  = STATE_IDLE;
-                previous_state = STATE_IDLE;
-                state_entry    = true;
-                state_timer_ms = 0;
-                vial_in_hand   = false;
-                stop_all_actuators();
-                gripper  = 0;
-                led_busy = 0;
-                printf("System reset. Ready.\n");
+                g_state     = State::IDLE;
+                g_prevState = State::IDLE;
+                g_entry     = true;
+                g_timerMs   = 0;
+                g_vialIndex = 0;
+                stopAll();
+                ledBusy = 0;
+                printf("System gestoppt und zurueckgesetzt.\n");
             }
-            user_led = !user_led; // Langsames Blinken im Idle
+            // LED langsam blinken
+            ledBusy = (duration_cast<milliseconds>(
+                           mainTimer.elapsed_time()).count() % 1000 < 100) ? 1 : 0;
+        }
+
+        // Display jede 5. Iteration aktualisieren (100 ms)
+        static int dispCnt = 0;
+        if (++dispCnt >= 5) {
+            dispCnt = 0;
+            updateDisplay();
         }
 
         // Timing
-        int elapsed = duration_cast<milliseconds>(main_task_timer.elapsed_time()).count();
-        if (main_task_period_ms - elapsed < 0)
-            printf("Warning: Main task took longer than %d ms\n", main_task_period_ms);
+        int elapsed = duration_cast<milliseconds>(mainTimer.elapsed_time()).count();
+        int sleep   = MAIN_PERIOD - elapsed;
+        if (sleep > 0)
+            thread_sleep_for(sleep);
         else
-            thread_sleep_for(main_task_period_ms - elapsed);
+            printf("Warnung: Main-Task %d ms zu langsam!\n", -sleep);
     }
-}
-
-void toggle_do_execute_main_fcn()
-{
-    do_execute_main_task = !do_execute_main_task;
-    if (do_execute_main_task)
-        do_reset_all_once = true;
 }
