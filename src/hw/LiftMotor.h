@@ -14,7 +14,7 @@
 class LiftMotor {
 public:
     LiftMotor(PinName stepPin, PinName dirPin, PinName enPin,
-              PinName sensorTop, PinName sensorBottom,
+              PinName sensorLift,
               PinName magnetPin,
               float speed = 1.0f);
 
@@ -29,15 +29,14 @@ public:
     bool isGrabbing();
 
     // --- Endschalter (TCST2103: active LOW) ---
-    bool isAtTop();
-    bool isAtBottom();
+    bool isAtEnd();
+
 
     int32_t getSteps();
 
 private:
     StepperTMC2209 m_stepper;
-    DigitalIn      m_sensorTop;
-    DigitalIn      m_sensorBottom;
+    DigitalIn      m_sensorLift;
     DigitalOut     m_magnet;
     float          m_speed;
 };

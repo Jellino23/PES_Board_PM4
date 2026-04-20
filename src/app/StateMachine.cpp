@@ -138,7 +138,7 @@ void StateMachine::handleHoming()
         m_revolver.turnCW();
     }
 
-    const bool liftOk = m_lift.isAtTop();
+    const bool liftOk = m_lift.isAtEnd();
     const bool revOk  = m_revolver.isAtVial();
 
     if (liftOk)  m_lift.stop();
@@ -169,7 +169,7 @@ void StateMachine::handleLiftDownPick()
         printf("[SM] Lift runter -> Vial greifen\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBottom()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::GRAB);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -196,7 +196,7 @@ void StateMachine::handleLiftUp()
         printf("[SM] Lift hoch (Vial gegriffen)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::ROTATE_TO_HOLE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -226,7 +226,7 @@ void StateMachine::handleLiftDownPlace()
         printf("[SM] Vial durch Loch in Messanlage\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBottom()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::RELEASE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -253,7 +253,7 @@ void StateMachine::handleLiftUpEmpty()
         printf("[SM] Lift hoch (leer)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::CLOSE_LID);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -310,7 +310,7 @@ void StateMachine::handleLiftDownRetrieve()
         printf("[SM] Lift runter -> Vial holen\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBottom()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::GRAB_AGAIN);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -337,7 +337,7 @@ void StateMachine::handleLiftUpReturn()
         printf("[SM] Lift hoch (Vial zurueck)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::ROTATE_BACK);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -367,7 +367,7 @@ void StateMachine::handleLiftDownReturn()
         printf("[SM] Vial in Startposition ablassen\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBottom()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::RELEASE_HOME);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -394,7 +394,7 @@ void StateMachine::handleLiftUpFinal()
         printf("[SM] Lift hoch (final)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (m_lift.isAtEnd()) {
         m_lift.stop();
         transitionTo(State::DONE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
