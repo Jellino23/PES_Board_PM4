@@ -42,19 +42,18 @@ namespace RobotConfig {
 //  PINS  –  LIFT (Schrittmotor + TMC2209)
 // ============================================================
     // Auf PES-Board: freie digitale Ausgänge verwenden
-    static constexpr PinName LIFT_STEP   = PB_D0;
-    static constexpr PinName LIFT_DIR    = PB_D1;
-    static constexpr PinName LIFT_EN     = PB_D2;
-    static constexpr PinName LIFT_TOP    = PB_A0;  // Endschalter oben  (TCST2103)
-    static constexpr PinName LIFT_BOT    = PB_A1;  // Endschalter unten (TCST2103)
-    static constexpr PinName LIFT_MAGNET = PB_D3;  // Hubmagnet
+    static constexpr PinName LIFT_STEP   = PA_9;
+    static constexpr PinName LIFT_DIR    = PC_15;
+    static constexpr PinName LIFT_EN     = PB_2;
+    static constexpr PinName LIFT_SEN    = PB_2;  // Endschalter unten (TCST2103)
+    static constexpr PinName LIFT_MAGNET = PB_A1; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
 
 // ============================================================
 //  PINS  –  REVOLVER (Schrittmotor + TMC2209)
 // ============================================================
-    static constexpr PinName REV_STEP   = PC_6;
-    static constexpr PinName REV_DIR    = PC_8;
-    static constexpr PinName REV_EN     = PB_12;
+    static constexpr PinName REV_STEP   = PA_8;
+    static constexpr PinName REV_DIR    = PC_14;
+    static constexpr PinName REV_EN     = PB_13;
     static constexpr PinName REV_VIAL   = PB_A2;  // Lichtschranke Vial-Position
     static constexpr PinName REV_HOLE   = PB_A3;  // Lichtschranke Loch-Position
 
@@ -64,16 +63,28 @@ namespace RobotConfig {
     static constexpr PinName LID_PWM   = PB_PWM_M1;
     static constexpr PinName LID_ENCA  = PB_ENC_A_M1;
     static constexpr PinName LID_ENCB  = PB_ENC_B_M1;
-    static constexpr PinName LID_CLOSE = PC_1;    // Endschalter geschlossen
+    static constexpr PinName LID_CLOSE = PC_6;    // Endschalter geschlossen
 
 // ============================================================
-//  PINS  –  DISPLAY (SPI)
+//  PINS  –  DISPLAY (SPI1)
 // ============================================================
-    static constexpr PinName DISP_MOSI = PB_5;
-    static constexpr PinName DISP_MISO = PB_4;
-    static constexpr PinName DISP_SCLK = PB_3;
-    static constexpr PinName DISP_CS   = PA_4;
-    static constexpr PinName DISP_DC   = PA_3;
-    static constexpr PinName DISP_RST  = PA_2;
+    static constexpr PinName DISP_MOSI = PA_7;   // SPI1_MOSI (war PC_12 / SPI3)
+    static constexpr PinName DISP_SCLK = PA_5;   // SPI1_SCK  (war PC_10 / SPI3)
+    static constexpr PinName DISP_CS   = PA_4;   // SPI1_NSS  (war PD_2)
+    static constexpr PinName DISP_DC   = PC_8;   // Data/Command (unverändert)
+    static constexpr PinName DISP_RST  = PC_9;   // Reset        (unverändert)
+    // DISP_MISO entfernt – Display ist write-only (NC in main.cpp)
+
+// ============================================================
+//  PINS  –  TOUCH (XPT2046, SPI1 geteilt)
+// ============================================================
+    static constexpr PinName TOUCH_MISO = PA_6;  // SPI1_MISO – Touch sendet zurück
+    static constexpr PinName TOUCH_CS   = PA_15; // SPI1_NSS  – Touch Chip Select
+    static constexpr PinName TOUCH_IRQ  = PB_8;  // GPIO_IN   – LOW bei Berührung
+
+// ============================================================
+//  PINS  –  DHT11 Temperatursensor (KY-015)
+// ============================================================
+    static constexpr PinName DHT_DATA = PB_D3;  // PB_12 – freier digitaler Pin
 
 } // namespace RobotConfig

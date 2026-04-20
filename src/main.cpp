@@ -19,6 +19,8 @@
 #include "hw/LiftMotor.h"
 #include "hw/Revolver.h"
 #include "hw/Lid.h"
+#include "DHT11.h"
+#include "XPT2046.h"
 
 // UI
 #include "ui/Display.h"
@@ -35,8 +37,7 @@ static LiftMotor lift(
     RobotConfig::LIFT_STEP,
     RobotConfig::LIFT_DIR,
     RobotConfig::LIFT_EN,
-    RobotConfig::LIFT_TOP,
-    RobotConfig::LIFT_BOT,
+    RobotConfig::LIFT_SEN,
     RobotConfig::LIFT_MAGNET,
     RobotConfig::LIFT_SPEED
 );
@@ -62,16 +63,26 @@ static Lid lid(
     RobotConfig::LID_OPEN_ROTATIONS
 );
 
+static DHT11 dht(RobotConfig::DHT_DATA);
+
 // ============================================================
 // UI-INSTANZEN
 // ============================================================
 static Display display(
     RobotConfig::DISP_MOSI,
-    RobotConfig::DISP_MISO,
+    NC,                        // ST7735 ist write-only; SPI1 via PA_7+PB_3 identifiziert
     RobotConfig::DISP_SCLK,
     RobotConfig::DISP_CS,
     RobotConfig::DISP_DC,
     RobotConfig::DISP_RST
+);
+
+static XPT2046 touch(
+    RobotConfig::DISP_MOSI,
+    RobotConfig::TOUCH_MISO,
+    RobotConfig::DISP_SCLK,
+    RobotConfig::TOUCH_CS,
+    RobotConfig::TOUCH_IRQ
 );
 static DisplayLayout screen(display);
 
@@ -108,6 +119,17 @@ int main()
 
     while (true) {
         loopTimer.reset();
+
+        // --- Touch-Eingabe ---
+        if (touch.isTouched()) {
+            const auto& btn = DisplayLayout::BTN_STARTSTOP;
+            int tx = touch.getX();
+            int ty = touch.getY();
+            if (tx >= btn.x && tx < btn.x + btn.w &&
+                ty >= btn.y && ty < btn.y + btn.h) {
+                robot.setRunning(!robot.isRunning());
+            }
+        }
 
         // --- State Machine ---
         robot.update(RobotConfig::MAIN_PERIOD_MS);

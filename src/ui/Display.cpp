@@ -125,6 +125,8 @@ void Display::init()
     cmd(0x3A); data8(0x05);
     // MADCTL
     cmd(0x36); data8(0x00);
+    // Display-Inversion aktivieren (Joy-It Panel invertiert by default)
+    cmd(0x21);
     // Display an
     cmd(0x29);
 

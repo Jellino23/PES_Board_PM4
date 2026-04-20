@@ -33,7 +33,7 @@ public:
      */
     Display(PinName mosi, PinName miso, PinName sclk,
             PinName cs,   PinName dc,   PinName rst,
-            int freqHz = 8000000);
+            int freqHz = 1000000);
 
     void init();
 
