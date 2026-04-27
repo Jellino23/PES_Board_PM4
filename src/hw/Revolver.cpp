@@ -1,23 +1,38 @@
 #include "Revolver.h"
 
 Revolver::Revolver(PinName stepPin, PinName dirPin, PinName enPin,
-                   PinName sensorVial, PinName sensorHole, float speed)
+                   PinName sensorPin, float speed)
     : m_stepper(stepPin, dirPin, enPin, 200 * 16)
-    , m_sensorVial(sensorVial)
-    , m_sensorHole(sensorHole)
+    , m_sensor(sensorPin)
+    , m_wasBlocked(false)
+    , m_triggerCount(0)
     , m_speed(speed)
 {
-    m_sensorVial.mode(PullUp);
-    m_sensorHole.mode(PullUp);
+    m_sensor.mode(PullUp);
+    m_wasBlocked = (m_sensor.read() == 0);  // Startposition merken, kein Falschtrigger
     m_stepper.enable();
+}
+
+void Revolver::update()
+{
+    bool blocked = m_sensor.read() == 0;
+    if (blocked && !m_wasBlocked)
+        m_triggerCount++;
+    m_wasBlocked = blocked;
 }
 
 void Revolver::turnCW()  { m_stepper.setVelocity( m_speed); }
 void Revolver::turnCCW() { m_stepper.setVelocity(-m_speed); }
 void Revolver::stop()    { m_stepper.setVelocity(0.0f); }
 
+void Revolver::moveSteps(int32_t steps) { m_stepper.setStepsRelative(steps, m_speed); }
+bool Revolver::isMoving() const         { return m_stepper.isMoving(); }
+
 // TCST2103: active LOW wenn Strahl unterbrochen
-bool Revolver::isAtVial() { return m_sensorVial.read() == 0; }
-bool Revolver::isAtHole() { return m_sensorHole.read() == 0; }
+bool Revolver::isAtVial() { return m_sensor.read() == 0; }
+bool Revolver::isAtHole() { return m_sensor.read() == 0; }
+
+void    Revolver::resetTriggerCount()    { m_triggerCount = 0; }
+int     Revolver::getTriggerCount() const { return m_triggerCount; }
 
 int32_t Revolver::getSteps() { return m_stepper.getSteps(); }

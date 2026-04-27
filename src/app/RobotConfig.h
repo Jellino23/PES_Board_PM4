@@ -45,7 +45,7 @@ namespace RobotConfig {
     static constexpr PinName LIFT_STEP   = PA_9;
     static constexpr PinName LIFT_DIR    = PC_15;
     static constexpr PinName LIFT_EN     = PB_2;
-    static constexpr PinName LIFT_SEN    = PB_2;  // Endschalter unten (TCST2103)
+    static constexpr PinName LIFT_SEN    = PB_0;  // Endschalter unten (TCST2103)
     static constexpr PinName LIFT_MAGNET = PB_A1; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
 
 // ============================================================
@@ -54,8 +54,8 @@ namespace RobotConfig {
     static constexpr PinName REV_STEP   = PA_8;
     static constexpr PinName REV_DIR    = PC_14;
     static constexpr PinName REV_EN     = PB_13;
-    static constexpr PinName REV_VIAL   = PB_A2;  // Lichtschranke Vial-Position
-    static constexpr PinName REV_HOLE   = PB_A3;  // Lichtschranke Loch-Position
+    static constexpr PinName  REV_VIAL            = PB_A2; // Lichtschranke – nur Vial-Position
+    static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 10;   // Mikroschritte Vial → Loch (und zurück)
 
 // ============================================================
 //  PINS  –  DECKEL (DC-Motor M1)
@@ -69,7 +69,7 @@ namespace RobotConfig {
 //  PINS  –  DISPLAY (SPI1)
 // ============================================================
     static constexpr PinName DISP_MOSI = PA_7;   // SPI1_MOSI (war PC_12 / SPI3)
-    static constexpr PinName DISP_SCLK = PA_5;   // SPI1_SCK  (war PC_10 / SPI3)
+    static constexpr PinName DISP_SCLK = PB_3;   // SPI1_SCK  (PA_5 belegt durch LED1)
     static constexpr PinName DISP_CS   = PA_4;   // SPI1_NSS  (war PD_2)
     static constexpr PinName DISP_DC   = PC_8;   // Data/Command (unverändert)
     static constexpr PinName DISP_RST  = PC_9;   // Reset        (unverändert)
@@ -81,6 +81,11 @@ namespace RobotConfig {
     static constexpr PinName TOUCH_MISO = PA_6;  // SPI1_MISO – Touch sendet zurück
     static constexpr PinName TOUCH_CS   = PA_15; // SPI1_NSS  – Touch Chip Select
     static constexpr PinName TOUCH_IRQ  = PB_8;  // GPIO_IN   – LOW bei Berührung
+
+// ============================================================
+//  PINS  –  BEDIENELEMENTE
+// ============================================================
+    static constexpr PinName START_BTN  = PB_1;   // Externer Startschalter (active-low, PullUp)
 
 // ============================================================
 //  PINS  –  DHT11 Temperatursensor (KY-015)

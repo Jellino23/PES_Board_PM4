@@ -64,6 +64,8 @@ void StateMachine::update(int deltaMs)
 {
     if (!m_running) return;
 
+    m_revolver.update();
+
     if (!m_entry)
         m_timerMs += deltaMs;
 
@@ -208,11 +210,10 @@ void StateMachine::handleRotateToHole()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Revolver CW -> Loch\n");
-        m_revolver.turnCW();
+        printf("[SM] Revolver %ld Schritte CW -> Loch\n", RobotConfig::REV_STEPS_VIAL_TO_HOLE);
+        m_revolver.moveSteps(RobotConfig::REV_STEPS_VIAL_TO_HOLE);
     }
-    if (m_revolver.isAtHole()) {
-        m_revolver.stop();
+    if (!m_revolver.isMoving()) {
         transitionTo(State::LIFT_DOWN_PLACE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_REV_MS) {
         transitionTo(State::ERROR);
@@ -349,11 +350,10 @@ void StateMachine::handleRotateBack()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Revolver CCW -> zurueck zur Vial-Position\n");
-        m_revolver.turnCCW(); // Gegenrichtung!
+        printf("[SM] Revolver %ld Schritte CCW -> Vial\n", RobotConfig::REV_STEPS_VIAL_TO_HOLE);
+        m_revolver.moveSteps(-RobotConfig::REV_STEPS_VIAL_TO_HOLE);
     }
-    if (m_revolver.isAtVial()) {
-        m_revolver.stop();
+    if (!m_revolver.isMoving()) {
         transitionTo(State::LIFT_DOWN_RETURN);
     } else if (m_timerMs > RobotConfig::TIMEOUT_REV_MS) {
         transitionTo(State::ERROR);
@@ -409,13 +409,13 @@ void StateMachine::handleDone()
         m_vialIndex++;
         printf("[SM] Zyklus %d abgeschlossen. Revolver -> naechstes Vial\n",
                m_vialIndex);
-        // Revolver zum nächsten Vial-Slot drehen
+        m_revolver.resetTriggerCount();
         m_revolver.turnCW();
     }
-    // Warte auf nächste Vial-Lichtschranke (überspringt Loch-Slots automatisch)
-    if (m_revolver.isAtVial()) {
+    // Sensor nur bei Vial: erster Trigger = nächstes Vial
+    if (m_revolver.getTriggerCount() >= 1) {
         m_revolver.stop();
-        transitionTo(State::LIFT_DOWN_PICK); // direkt nächstes Vial
+        transitionTo(State::LIFT_DOWN_PICK);
     } else if (m_timerMs > RobotConfig::TIMEOUT_REV_MS) {
         transitionTo(State::ERROR);
     }

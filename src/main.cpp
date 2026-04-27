@@ -1,6 +1,6 @@
 /**
  * @file main.cpp
- * @brief Vial-Messanlage – Hauptprogramm (ohne Display).
+ * @brief Vial-Messanlage – Hauptprogramm.
  *
  * Objekte werden in main() erstellt (nicht als statische Globals),
  * da statische Initialisierung vor dem RTOS-Start zu Crashes führt.
@@ -16,6 +16,7 @@
 
 #include "app/StateMachine.h"
 #include "app/RobotConfig.h"
+#include "ui/Display.h"
 
 // Flag wird im ISR gesetzt, setRunning() im Haupt-Loop aufgerufen
 // (printf darf nicht aus ISR-Kontext aufgerufen werden)
@@ -40,7 +41,7 @@ int main()
     Revolver revolver(
         RobotConfig::REV_STEP, RobotConfig::REV_DIR,
         RobotConfig::REV_EN,   RobotConfig::REV_VIAL,
-        RobotConfig::REV_HOLE, RobotConfig::REVOLVER_SPEED
+        RobotConfig::REVOLVER_SPEED
     );
     Lid lid(
         RobotConfig::LID_PWM,  RobotConfig::LID_ENCA,
@@ -55,10 +56,24 @@ int main()
     // Bedienelemente
     DigitalOut ledBusy(LED1, 0);
     DigitalOut enableMotors(PB_ENABLE_DCMOTORS, 0);
-    DebounceIn userBtn(BUTTON1);
+    DebounceIn userBtn(RobotConfig::START_BTN, PullUp);
     userBtn.fall(callback(&onButtonToggle));
 
-    printf("[main] Bereit – blauen Knopf druecken zum Starten.\n");
+    // Display
+    Display display(
+        RobotConfig::DISP_MOSI, NC,
+        RobotConfig::DISP_SCLK,
+        RobotConfig::DISP_CS,
+        RobotConfig::DISP_DC,
+        RobotConfig::DISP_RST,
+        8000000
+    );
+    display.init();
+    display.fillScreen(Display::BLACK);
+    display.drawText(2, 2, "STATE:", Display::GRAY);
+    display.drawText(2, 16, "IDLE", Display::WHITE);
+
+    printf("[main] Bereit – Startschalter (PB1) druecken zum Starten.\n");
 
     Timer loopTimer;
     loopTimer.start();
@@ -90,6 +105,11 @@ int main()
         if (cur != lastState) {
             lastState = cur;
             printf("[SM] -> %s\n", stateName(cur));
+            uint16_t col = (cur == State::ERROR) ? Display::RED
+                         : robot.isRunning()      ? Display::GREEN
+                                                  : Display::WHITE;
+            display.fillRect(0, 16, Display::WIDTH, 10, Display::BLACK);
+            display.drawText(2, 16, stateName(cur), col);
         }
 
         // Alle 2 s aktuellen State wiederholen
