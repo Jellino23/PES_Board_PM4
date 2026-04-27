@@ -49,12 +49,12 @@ namespace RobotConfig {
     static constexpr PinName LIFT_MAGNET = PB_A1; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
 
 // ============================================================
-//  PINS  –  REVOLVER (Schrittmotor + TMC2209)
+//  PINS  –  REVOLVER (Schrittmotor + TMC2209)wha
 // ============================================================
     static constexpr PinName REV_STEP   = PA_8;
     static constexpr PinName REV_DIR    = PC_14;
     static constexpr PinName REV_EN     = PB_13;
-    static constexpr PinName  REV_VIAL            = PB_A2; // Lichtschranke – nur Vial-Position
+    static constexpr PinName  REV_VIAL            = PB_2; // Lichtschranke – nur Vial-Position
     static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 10;   // Mikroschritte Vial → Loch (und zurück)
 
 // ============================================================
