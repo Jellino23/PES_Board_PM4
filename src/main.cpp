@@ -1,105 +1,29 @@
 /**
  * @file main.cpp
- * @brief Vial-Messanlage – Hauptprogramm (Orchestrierung).
+ * @brief Vial-Messanlage – Hauptprogramm (ohne Display).
  *
- * main.cpp ist nur noch Verdrahtung:
- *  1. Hardware-Objekte erstellen
- *  2. StateMachine und DisplayLayout damit verbinden
- *  3. Haupt-Loop: update() + display.update()
- *
- * Keine Logik, keine Konstanten, keine Magic Numbers hier.
- * Alles in StateMachine.cpp / RobotConfig.h / DisplayLayout.cpp.
+ * Objekte werden in main() erstellt (nicht als statische Globals),
+ * da statische Initialisierung vor dem RTOS-Start zu Crashes führt.
  */
 
 #include "mbed.h"
 #include "PESBoardPinMap.h"
 #include "DebounceIn.h"
 
-// Hardware-Treiber
 #include "hw/LiftMotor.h"
 #include "hw/Revolver.h"
 #include "hw/Lid.h"
-#include "DHT11.h"
-#include "XPT2046.h"
 
-// UI
-#include "ui/Display.h"
-#include "ui/DisplayLayout.h"
-
-// Applikation
 #include "app/StateMachine.h"
 #include "app/RobotConfig.h"
 
-// ============================================================
-// HARDWARE-INSTANZEN
-// ============================================================
-static LiftMotor lift(
-    RobotConfig::LIFT_STEP,
-    RobotConfig::LIFT_DIR,
-    RobotConfig::LIFT_EN,
-    RobotConfig::LIFT_SEN,
-    RobotConfig::LIFT_MAGNET,
-    RobotConfig::LIFT_SPEED
-);
-
-static Revolver revolver(
-    RobotConfig::REV_STEP,
-    RobotConfig::REV_DIR,
-    RobotConfig::REV_EN,
-    RobotConfig::REV_VIAL,
-    RobotConfig::REV_HOLE,
-    RobotConfig::REVOLVER_SPEED
-);
-
-static Lid lid(
-    RobotConfig::LID_PWM,
-    RobotConfig::LID_ENCA,
-    RobotConfig::LID_ENCB,
-    RobotConfig::LID_GEAR_RATIO,
-    RobotConfig::LID_KN,
-    RobotConfig::LID_VOLTAGE_MAX,
-    RobotConfig::LID_CLOSE,
-    RobotConfig::LID_SPEED,
-    RobotConfig::LID_OPEN_ROTATIONS
-);
-
-static DHT11 dht(RobotConfig::DHT_DATA);
-
-// ============================================================
-// UI-INSTANZEN
-// ============================================================
-static Display display(
-    RobotConfig::DISP_MOSI,
-    NC,                        // ST7735 ist write-only; SPI1 via PA_7+PB_3 identifiziert
-    RobotConfig::DISP_SCLK,
-    RobotConfig::DISP_CS,
-    RobotConfig::DISP_DC,
-    RobotConfig::DISP_RST
-);
-
-static XPT2046 touch(
-    RobotConfig::DISP_MOSI,
-    RobotConfig::TOUCH_MISO,
-    RobotConfig::DISP_SCLK,
-    RobotConfig::TOUCH_CS,
-    RobotConfig::TOUCH_IRQ
-);
-static DisplayLayout screen(display);
-
-// ============================================================
-// APPLIKATION
-// ============================================================
-static StateMachine robot(lift, revolver, lid);
-
-// ============================================================
-// BEDIENELEMENTE
-// ============================================================
-static DigitalOut  ledBusy(LED1, 0);
-static DebounceIn  userBtn(BUTTON1);
+// Flag wird im ISR gesetzt, setRunning() im Haupt-Loop aufgerufen
+// (printf darf nicht aus ISR-Kontext aufgerufen werden)
+static volatile bool g_toggleRequest = false;
 
 static void onButtonToggle()
 {
-    robot.setRunning(!robot.isRunning());
+    g_toggleRequest = true;
 }
 
 // ============================================================
@@ -107,54 +31,76 @@ static void onButtonToggle()
 // ============================================================
 int main()
 {
-    display.init();
-    screen.drawSplash();
+    // Hardware
+    LiftMotor lift(
+        RobotConfig::LIFT_STEP, RobotConfig::LIFT_DIR,
+        RobotConfig::LIFT_EN,   RobotConfig::LIFT_SEN,
+        RobotConfig::LIFT_MAGNET, RobotConfig::LIFT_SPEED
+    );
+    Revolver revolver(
+        RobotConfig::REV_STEP, RobotConfig::REV_DIR,
+        RobotConfig::REV_EN,   RobotConfig::REV_VIAL,
+        RobotConfig::REV_HOLE, RobotConfig::REVOLVER_SPEED
+    );
+    Lid lid(
+        RobotConfig::LID_PWM,  RobotConfig::LID_ENCA,
+        RobotConfig::LID_ENCB, RobotConfig::LID_GEAR_RATIO,
+        RobotConfig::LID_KN,   RobotConfig::LID_VOLTAGE_MAX,
+        RobotConfig::LID_CLOSE, RobotConfig::LID_SPEED,
+        RobotConfig::LID_OPEN_ROTATIONS
+    );
+    // Applikation
+    StateMachine robot(lift, revolver, lid);
 
+    // Bedienelemente
+    DigitalOut ledBusy(LED1, 0);
+    DigitalOut enableMotors(PB_ENABLE_DCMOTORS, 0);
+    DebounceIn userBtn(BUTTON1);
     userBtn.fall(callback(&onButtonToggle));
+
+    printf("[main] Bereit – blauen Knopf druecken zum Starten.\n");
 
     Timer loopTimer;
     loopTimer.start();
 
-    int dispCounter = 0;
+    State lastState  = State::IDLE;
+    int   printCount = 0;
 
     while (true) {
         loopTimer.reset();
 
-        // --- Touch-Eingabe ---
-        if (touch.isTouched()) {
-            const auto& btn = DisplayLayout::BTN_STARTSTOP;
-            int tx = touch.getX();
-            int ty = touch.getY();
-            if (tx >= btn.x && tx < btn.x + btn.w &&
-                ty >= btn.y && ty < btn.y + btn.h) {
-                robot.setRunning(!robot.isRunning());
-            }
+        // Button-Toggle aus ISR-Flag verarbeiten
+        if (g_toggleRequest) {
+            g_toggleRequest = false;
+            robot.setRunning(!robot.isRunning());
         }
 
-        // --- State Machine ---
         robot.update(RobotConfig::MAIN_PERIOD_MS);
 
-        // --- LED Feedback ---
-        if (robot.getState() == State::ERROR) {
-            // Schnelles Blinken bei Fehler
+        enableMotors = robot.isRunning() ? 1 : 0;
+
+        // LED
+        if (robot.getState() == State::ERROR)
             ledBusy = (robot.getTimerMs() % 400 < 200) ? 1 : 0;
-        } else {
+        else
             ledBusy = robot.isRunning() ? 1 : 0;
+
+        // State-Wechsel sofort ausgeben
+        State cur = robot.getState();
+        if (cur != lastState) {
+            lastState = cur;
+            printf("[SM] -> %s\n", stateName(cur));
         }
 
-        // --- Display (alle 5 Zyklen = 100 ms) ---
-        if (++dispCounter >= 5) {
-            dispCounter = 0;
-            screen.update(
-                robot.getState(),
-                robot.getVialIndex(),
-                robot.getTimerMs(),
-                robot.isRunning(),
-                RobotConfig::MEASURE_MS
-            );
+        // Alle 2 s aktuellen State wiederholen
+        if (++printCount >= 100) {
+            printCount = 0;
+            printf("[SM] %s  run:%d  t:%d ms\n",
+                   stateName(robot.getState()),
+                   (int)robot.isRunning(),
+                   robot.getTimerMs());
         }
 
-        // --- Timing ---
         int elapsed = duration_cast<milliseconds>(loopTimer.elapsed_time()).count();
         int toSleep = RobotConfig::MAIN_PERIOD_MS - elapsed;
         if (toSleep > 0)

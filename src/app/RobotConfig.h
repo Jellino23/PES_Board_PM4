@@ -34,7 +34,7 @@ namespace RobotConfig {
 //  MOTOR-PARAMETER
 // ============================================================
     static constexpr uint32_t STEPPER_STEPS_PER_REV = 200 * 16; // 16 Mikroschritte
-    static constexpr float    LID_GEAR_RATIO         = 100.0f;
+    static constexpr float    LID_GEAR_RATIO         = 25.0f;
     static constexpr float    LID_KN                 = 140.0f / 12.0f; // [rpm/V]
     static constexpr float    LID_VOLTAGE_MAX        = 12.0f;
 
@@ -60,9 +60,9 @@ namespace RobotConfig {
 // ============================================================
 //  PINS  –  DECKEL (DC-Motor M1)
 // ============================================================
-    static constexpr PinName LID_PWM   = PB_PWM_M1;
-    static constexpr PinName LID_ENCA  = PB_ENC_A_M1;
-    static constexpr PinName LID_ENCB  = PB_ENC_B_M1;
+    static constexpr PinName LID_PWM   = PB_PWM_M3;
+    static constexpr PinName LID_ENCA  = PB_ENC_A_M3;
+    static constexpr PinName LID_ENCB  = PB_ENC_B_M3;
     static constexpr PinName LID_CLOSE = PC_6;    // Endschalter geschlossen
 
 // ============================================================
