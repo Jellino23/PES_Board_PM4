@@ -93,6 +93,7 @@ private:
     int   m_timerMs   = 0;
     int   m_vialIndex = 0;
     bool  m_running   = false;
+    bool  m_leftPos   = false;  // Debounce: Startposition verlassen?
 
     void transitionTo(State next);
     void stopAll();

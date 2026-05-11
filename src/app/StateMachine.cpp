@@ -182,10 +182,13 @@ void StateMachine::handleLiftDownPick()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Lift runter -> Vial greifen\n");
+        m_leftPos = false;
+        m_lift.resetTriggerCount();
+        printf("[SM] Lift runter -> Vial greifen (1. Trigger)\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBot()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.getTriggerCount() >= 1) {
         m_lift.stop();
         transitionTo(State::GRAB);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -209,10 +212,12 @@ void StateMachine::handleLiftUp()
 {
     if (m_entry) {
         m_entry = false;
+        m_leftPos = false;
         printf("[SM] Lift hoch (Vial gegriffen)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.isAtTop()) {
         m_lift.stop();
         transitionTo(State::ROTATE_TO_HOLE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -238,10 +243,13 @@ void StateMachine::handleLiftDownPlace()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Vial durch Loch in Messanlage\n");
+        m_leftPos = false;
+        m_lift.resetTriggerCount();
+        printf("[SM] Vial durch Loch in Messanlage (2. Trigger)\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBot()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.getTriggerCount() >= 2) {
         m_lift.stop();
         transitionTo(State::RELEASE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -265,10 +273,12 @@ void StateMachine::handleLiftUpEmpty()
 {
     if (m_entry) {
         m_entry = false;
+        m_leftPos = false;
         printf("[SM] Lift hoch (leer)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.isAtTop()) {
         m_lift.stop();
         transitionTo(State::CLOSE_LID);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -322,10 +332,13 @@ void StateMachine::handleLiftDownRetrieve()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Lift runter -> Vial holen\n");
+        m_leftPos = false;
+        m_lift.resetTriggerCount();
+        printf("[SM] Lift runter -> Vial holen (2. Trigger)\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBot()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.getTriggerCount() >= 2) {
         m_lift.stop();
         transitionTo(State::GRAB_AGAIN);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -349,10 +362,12 @@ void StateMachine::handleLiftUpReturn()
 {
     if (m_entry) {
         m_entry = false;
+        m_leftPos = false;
         printf("[SM] Lift hoch (Vial zurueck)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.isAtTop()) {
         m_lift.stop();
         transitionTo(State::ROTATE_BACK);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -378,10 +393,13 @@ void StateMachine::handleLiftDownReturn()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Vial in Startposition ablassen\n");
+        m_leftPos = false;
+        m_lift.resetTriggerCount();
+        printf("[SM] Vial in Startposition ablassen (1. Trigger)\n");
         m_lift.moveDown();
     }
-    if (m_lift.isAtBot()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.getTriggerCount() >= 1) {
         m_lift.stop();
         transitionTo(State::RELEASE_HOME);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -405,10 +423,12 @@ void StateMachine::handleLiftUpFinal()
 {
     if (m_entry) {
         m_entry = false;
+        m_leftPos = false;
         printf("[SM] Lift hoch (final)\n");
         m_lift.moveUp();
     }
-    if (m_lift.isAtTop()) {
+    if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
+    if (m_leftPos && m_lift.isAtTop()) {
         m_lift.stop();
         transitionTo(State::DONE);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
