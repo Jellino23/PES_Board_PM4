@@ -152,6 +152,7 @@ int main()
                 printf("[REV-TEST] AT_VIAL #%d – raw=%d  steps=%ld\n",
                        vialNum, revolver.isAtVial() ? 1 : 0, revolver.getSteps());
                 printf("           >> Knopf druecken -> TO_HOLE.\n");
+                state = TestState::TO_HOLE; entry = true; timerMs = 0;
                 waitForBtn = true;
             }
             break;
@@ -181,6 +182,7 @@ int main()
                 printf("           raw=0 -> Loch frei (korrekt)\n");
                 printf("           raw=1 -> Loch blockiert (Schritte anpassen)\n");
                 printf("           >> Knopf druecken -> TO_VIAL.\n");
+                state = TestState::TO_VIAL; entry = true; timerMs = 0;
                 waitForBtn = true;
             }
             break;
@@ -208,6 +210,7 @@ int main()
                 printf("[REV-TEST] BACK_VIAL – raw=%d  steps=%ld\n",
                        revolver.isAtVial() ? 1 : 0, revolver.getSteps());
                 printf("           >> Knopf druecken -> ADVANCE.\n");
+                state = TestState::ADVANCE; entry = true; timerMs = 0;
                 waitForBtn = true;
             }
             break;
