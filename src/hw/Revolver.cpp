@@ -21,8 +21,8 @@ void Revolver::update()
     m_wasBlocked = blocked;
 }
 
-void Revolver::turnCW()  { m_stepper.setVelocity( m_speed); }
-void Revolver::turnCCW() { m_stepper.setVelocity(-m_speed); }
+void Revolver::turnCW()  { m_stepper.setVelocity(-m_speed); }
+void Revolver::turnCCW() { m_stepper.setVelocity(m_speed); }
 void Revolver::stop()    { m_stepper.setVelocity(0.0f); }
 
 void Revolver::moveSteps(int32_t steps) { m_stepper.setStepsRelative(steps, m_speed); }
