@@ -2,7 +2,7 @@
 
 Revolver::Revolver(PinName stepPin, PinName dirPin, PinName enPin,
                    PinName sensorPin, float speed)
-    : m_stepper(stepPin, dirPin, enPin, 200 * 16)
+    : m_stepper(stepPin, dirPin, enPin, 200 * 64)
     , m_sensor(sensorPin)
     , m_wasBlocked(false)
     , m_triggerCount(0)

@@ -33,7 +33,7 @@ namespace RobotConfig {
 // ============================================================
 //  MOTOR-PARAMETER
 // ============================================================
-    static constexpr uint32_t STEPPER_STEPS_PER_REV = 200 * 16; // 16 Mikroschritte
+    static constexpr uint32_t STEPPER_STEPS_PER_REV = 200 * 64; // 64 Mikroschritte
     static constexpr float    LID_GEAR_RATIO         = 25.0f;
     static constexpr float    LID_KN                 = 140.0f / 12.0f; // [rpm/V]
     static constexpr float    LID_VOLTAGE_MAX        = 12.0f;
@@ -55,7 +55,7 @@ namespace RobotConfig {
     static constexpr PinName REV_DIR    = PC_14;
     static constexpr PinName REV_EN     = PB_13;
     static constexpr PinName  REV_VIAL            = PC_5; // Lichtschranke – nur Vial-Position
-    static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 400;  // Mikroschritte Vial → Loch (kalibrieren!)
+    static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 1600; // Mikroschritte Vial → Loch (kalibrieren!)
 
 // ============================================================
 //  PINS  –  DECKEL (DC-Motor M1)
