@@ -25,7 +25,7 @@ namespace RobotConfig {
 //  GESCHWINDIGKEITEN
 // ============================================================
     static constexpr float LIFT_SPEED    = 1.0f;  // [rot/s]
-    static constexpr float REVOLVER_SPEED = 0.5f; // [rot/s]
+    static constexpr float REVOLVER_SPEED = 0.1f; // [rot/s]
     static constexpr float LID_SPEED     = 0.3f;  // [rot/s]
 
     static constexpr float LID_OPEN_ROTATIONS = 2.5f; // Umdrehungen für voll-offen
