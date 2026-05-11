@@ -27,20 +27,26 @@ public:
      */
     Lid(PinName motorPWM, PinName encA, PinName encB,
         float gearRatio, float kn, float voltageMax,
-        PinName sensorClose,
-        float speed         = 0.3f,
-        float openRotations = 2.5f);
+        float speed         = 0.05f,
+        float openRotations = 0.3f);
 
     void openLid();
     void closeLid();
     void stopLid();
 
-    bool isClosed();
-    bool isOpen();
+    bool  isClosed();
+    bool  isOpen();
+
+    // Für Testmodus: direkter Velocity-Befehl und Diagnose-Abfragen
+    void  runVelocity(float rps);
+    float getRotation() const;
+    float getVelocity() const;
+    float getVoltage()  const;
+    float getPWM()      const;
+    long  getEncoderCount() const;
 
 private:
-    DCMotor    m_motor;
-    DigitalIn  m_sensorClose;
-    float      m_speed;
-    float      m_openRotations;
+    DCMotor m_motor;
+    float   m_speed;
+    float   m_openRotations;
 };

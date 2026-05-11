@@ -26,9 +26,9 @@ namespace RobotConfig {
 // ============================================================
     static constexpr float LIFT_SPEED    = 1.0f;  // [rot/s]
     static constexpr float REVOLVER_SPEED = 0.5f; // [rot/s]
-    static constexpr float LID_SPEED     = 0.3f;  // [rot/s]
+    static constexpr float LID_SPEED     = 0.15f;  // [rot/s], muss positiv sein (Richtung via setRotation-Vorzeichen)
 
-    static constexpr float LID_OPEN_ROTATIONS = 2.5f; // Umdrehungen für voll-offen
+    static constexpr float LID_OPEN_ROTATIONS = 0.75f; // Umdrehungen für voll-offen
 
 // ============================================================
 //  MOTOR-PARAMETER
@@ -42,17 +42,21 @@ namespace RobotConfig {
 //  PINS  –  LIFT (Schrittmotor + TMC2209)
 // ============================================================
     // Auf PES-Board: freie digitale Ausgänge verwenden
-    static constexpr PinName LIFT_STEP   = PA_9;
-    static constexpr PinName LIFT_DIR    = PC_15;
+    static constexpr PinName LIFT_STEP   = PB_12;
+    static constexpr PinName LIFT_DIR    = PA_11;
     static constexpr PinName LIFT_EN     = PB_2;
-    static constexpr PinName LIFT_SEN    = PB_0;  // Endschalter unten (TCST2103)
-    static constexpr PinName LIFT_MAGNET = PB_A1; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
+    static constexpr PinName LIFT_SEN    = PB_0;  // Lichtschranke oben (TCST2103, active HIGH = unterbrochen)
+    static constexpr PinName LIFT_MAGNET = PC_3;
+    // Schritte von Oben-Position (Home=0) bis Greifposition
+    // Kalibrieren: Serial zeigt "liftSteps:-XXX" beim Runterfahren, Wert ablesen und hier eintragen
+    // 200*16 = 3200 = 1 Motorumdrehung
+    static constexpr int32_t LIFT_STEPS_DOWN = 200 * 16 * 1;  // Startwert: 1 Umdrehung, erhöhen bis Greifposition erreicht
 
 // ============================================================
 //  PINS  –  REVOLVER (Schrittmotor + TMC2209)
 // ============================================================
     static constexpr PinName REV_STEP   = PA_8;
-    static constexpr PinName REV_DIR    = PC_14;
+    static constexpr PinName REV_DIR    = PB_7;
     static constexpr PinName REV_EN     = PB_13;
     static constexpr PinName  REV_VIAL            = PC_5; // Lichtschranke – nur Vial-Position
     static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 10;   // Mikroschritte Vial → Loch (und zurück)
@@ -61,9 +65,8 @@ namespace RobotConfig {
 //  PINS  –  DECKEL (DC-Motor M1)
 // ============================================================
     static constexpr PinName LID_PWM   = PB_PWM_M3;
-    static constexpr PinName LID_ENCA  = PB_ENC_A_M3;
+    static constexpr PinName LID_ENCA  = PB_ENC_A_M3;  
     static constexpr PinName LID_ENCB  = PB_ENC_B_M3;
-    static constexpr PinName LID_CLOSE = PC_6;    // Endschalter geschlossen
 
 // ============================================================
 //  PINS  –  DISPLAY (SPI1)
@@ -90,6 +93,6 @@ namespace RobotConfig {
 // ============================================================
 //  PINS  –  DHT11 Temperatursensor (KY-015)
 // ============================================================
-    static constexpr PinName DHT_DATA = PB_D3;  // PB_12 – freier digitaler Pin
+    static constexpr PinName DHT_DATA = PB_10;
 
 } // namespace RobotConfig

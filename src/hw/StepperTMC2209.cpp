@@ -48,11 +48,11 @@ void StepperTMC2209::setVelocity(float velocity)
     if (velocity > 0.0f) {
         m_Dir = 1;
         m_targetSteps = INT32_MAX;
-        applyVelocity(velocity);
+        applyVelocity(abs(velocity));
     } else if (velocity < 0.0f) {
         m_Dir = 0;
         m_targetSteps = INT32_MIN;
-        applyVelocity(-velocity);
+        applyVelocity(abs(velocity));
     } else {
         m_Ticker.detach();
         m_moving      = false;

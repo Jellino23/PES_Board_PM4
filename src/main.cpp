@@ -47,8 +47,7 @@ int main()
         RobotConfig::LID_PWM,  RobotConfig::LID_ENCA,
         RobotConfig::LID_ENCB, RobotConfig::LID_GEAR_RATIO,
         RobotConfig::LID_KN,   RobotConfig::LID_VOLTAGE_MAX,
-        RobotConfig::LID_CLOSE, RobotConfig::LID_SPEED,
-        RobotConfig::LID_OPEN_ROTATIONS
+        RobotConfig::LID_SPEED, RobotConfig::LID_OPEN_ROTATIONS
     );
     // Applikation
     StateMachine robot(lift, revolver, lid);

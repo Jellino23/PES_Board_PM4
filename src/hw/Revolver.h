@@ -10,7 +10,7 @@
  *
  * Hardware:
  *  - Schrittmotor mit TMC2209-Treiber
- *  - Eine Lichtschranke (TCST2103, active LOW) für alle Stoppositionen
+ *  - Eine Lichtschranke (TCST2103, active HIGH) für alle Stoppositionen
  *
  * update() muss jede Loop-Iteration aufgerufen werden, damit
  * getTriggerCount() korrekte Flankenzählung liefert.
@@ -33,7 +33,7 @@ public:
     void moveSteps(int32_t steps);  // positiv = CW, negativ = CCW
     bool isMoving() const;
 
-    // --- Lichtschranke (TCST2103: active LOW) ---
+    // --- Lichtschranke (TCST2103: active HIGH) ---
     // Beide Methoden lesen denselben Sensor; der Kontext (State) entscheidet,
     // was die Unterbrechung bedeutet.
     bool isAtVial();

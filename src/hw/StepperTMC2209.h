@@ -52,6 +52,7 @@ public:
     void setStepsRelative(int32_t deltaSteps, float velocity);
 
     int32_t getSteps()    const { return m_steps; }
+    void    resetSteps()        { m_steps = 0; }
     float   getVelocity() const { return m_velocity; }
     bool    isMoving()    const { return m_moving; }
 
