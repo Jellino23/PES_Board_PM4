@@ -42,8 +42,8 @@ namespace RobotConfig {
 //  PINS  –  LIFT (Schrittmotor + TMC2209)
 // ============================================================
     // Auf PES-Board: freie digitale Ausgänge verwenden
-    static constexpr PinName LIFT_STEP   = PA_9;
-    static constexpr PinName LIFT_DIR    = PC_15;
+    static constexpr PinName LIFT_STEP   = PB_12;
+    static constexpr PinName LIFT_DIR    = PA_11;
     static constexpr PinName LIFT_EN     = PB_2;
     static constexpr PinName LIFT_SEN    = PB_0;  // Endschalter unten (TCST2103)
     static constexpr PinName LIFT_MAGNET = PB_A1; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
@@ -52,7 +52,7 @@ namespace RobotConfig {
 //  PINS  –  REVOLVER (Schrittmotor + TMC2209)
 // ============================================================
     static constexpr PinName REV_STEP   = PA_8;
-    static constexpr PinName REV_DIR    = PC_14;
+    static constexpr PinName REV_DIR    = PB_7;
     static constexpr PinName REV_EN     = PB_13;
     static constexpr PinName  REV_VIAL            = PC_5; // Lichtschranke – nur Vial-Position
     static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 320;  // Mikroschritte Vial → Loch (9° bei 1/64)
