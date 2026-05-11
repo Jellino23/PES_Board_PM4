@@ -1,15 +1,13 @@
 /**
  * @file main.cpp  [test/revolver]
- * @brief Revolver-Test: Homing, Schritt-Kalibrierung, Vial-zu-Vial-Zyklus.
+ * @brief Revolver-Test: manueller Schritt-durch-Schritt-Modus.
  *
- * Workflow:
- *   Knopf -> HOMING (CCW, 1. Trigger) -> AT_VIAL
- *         -> TO_HOLE (+steps) -> AT_HOLE (Step-Ausgabe fuer Kalibrierung)
- *         -> TO_VIAL (-steps) -> BACK_VIAL
- *         -> ADVANCE (CW, 1. Trigger) -> NEXT_VIAL -> (Schleife)
+ * Jede Aktion laeuft automatisch bis zum Stopp.
+ * Danach: Knopf (PB1) druecken um zum naechsten Schritt weiterzugehen.
  *
- * STARTUP_DELAY_MS: Motor muss sich erst physisch bewegen,
- * bevor die Lichtschranke als Stoppsignal gilt.
+ * Reihenfolge:
+ *   HOMING (CCW, Trigger) -> AT_VIAL -> TO_HOLE -> AT_HOLE
+ *   -> TO_VIAL -> BACK_VIAL -> ADVANCE (CW, Trigger) -> NEXT_VIAL -> (Schleife)
  */
 
 #include "mbed.h"
@@ -21,7 +19,6 @@
 static const int PERIOD_MS        = 20;
 static const int TEST_TIMEOUT_MS  = 15000;
 static const int STARTUP_DELAY_MS = 200;
-static const int PAUSE_MS         = 500;
 
 enum class TestState {
     IDLE,
@@ -53,8 +50,8 @@ static const char* testStateName(TestState s)
     return "?";
 }
 
-static volatile bool g_toggleRequest = false;
-static void onButton() { g_toggleRequest = true; }
+static volatile bool g_btnPressed = false;
+static void onButton() { g_btnPressed = true; }
 
 int main()
 {
@@ -73,12 +70,12 @@ int main()
     printf("[REV-TEST] REV_STEPS_VIAL_TO_HOLE = %ld\n",
            RobotConfig::REV_STEPS_VIAL_TO_HOLE);
 
-    TestState state   = TestState::IDLE;
-    bool      entry   = true;
-    int       timerMs = 0;
-    int       printCnt = 0;
-    bool      running = false;
-    int       vialNum = 0;
+    TestState state       = TestState::IDLE;
+    bool      entry       = true;
+    int       timerMs     = 0;
+    int       printCnt    = 0;
+    bool      waitForBtn  = false;   // true = Aktion fertig, warten auf Knopf
+    int       vialNum     = 0;
 
     Timer loopTimer;
     loopTimer.start();
@@ -88,48 +85,47 @@ int main()
 
         revolver.update();
 
-        // Knopf: Start/Stop toggle
-        if (g_toggleRequest) {
-            g_toggleRequest = false;
-            if (!running) {
-                running      = true;
-                enableMotors = 1;
-                ledBusy      = 1;
-                vialNum      = 0;
-                state        = TestState::HOMING;
-                entry        = true;
-                timerMs      = 0;
-                printf("[REV-TEST] Start!\n");
-            } else {
-                running      = false;
-                enableMotors = 0;
-                ledBusy      = 0;
-                revolver.stop();
-                state        = TestState::IDLE;
-                entry        = true;
-                timerMs      = 0;
-                printf("[REV-TEST] Gestoppt.\n");
-            }
-        }
+        const bool btnNow = g_btnPressed;
+        g_btnPressed = false;
 
-        if (!running) {
+        if (!entry) timerMs += PERIOD_MS;
+
+        // Warten auf Knopf zwischen den States
+        if (waitForBtn) {
+            if (btnNow) {
+                waitForBtn = false;
+                // Transition wurde bereits gesetzt, entry=true
+            }
             int elapsed = duration_cast<milliseconds>(loopTimer.elapsed_time()).count();
             int toSleep = PERIOD_MS - elapsed;
             if (toSleep > 0) thread_sleep_for(toSleep);
             continue;
         }
 
-        if (!entry) timerMs += PERIOD_MS;
+        // Abbruch aus jedem State mit Knopf nur wenn Maschine laeuft
+        // (In IDLE startet der Knopf)
 
         switch (state) {
 
         case TestState::IDLE:
+            if (entry) {
+                entry = false;
+                enableMotors = 0;
+                ledBusy = 0;
+                printf("[REV-TEST] IDLE – PB1 druecken zum Starten.\n");
+            }
+            if (btnNow) {
+                enableMotors = 1;
+                ledBusy = 1;
+                vialNum = 0;
+                state = TestState::HOMING; entry = true; timerMs = 0;
+            }
             break;
 
         case TestState::HOMING:
             if (entry) {
                 entry = false;
-                printf("[REV-TEST] HOMING: CCW bis Vial...\n");
+                printf("[REV-TEST] HOMING: CCW bis Vial-Sensor...\n");
                 revolver.resetTriggerCount();
                 revolver.turnCCW();
             }
@@ -137,7 +133,9 @@ int main()
                 revolver.stop();
                 printf("[REV-TEST] Homing fertig – trig=%d  steps=%ld\n",
                        revolver.getTriggerCount(), revolver.getSteps());
+                printf("           >> Knopf druecken zum Weiterfahren.\n");
                 state = TestState::AT_VIAL; entry = true; timerMs = 0;
+                waitForBtn = true;
             } else if (timerMs > TEST_TIMEOUT_MS) {
                 state = TestState::ERROR_STATE; entry = true; timerMs = 0;
             }
@@ -149,9 +147,8 @@ int main()
                 vialNum++;
                 printf("[REV-TEST] AT_VIAL #%d – raw=%d  steps=%ld\n",
                        vialNum, revolver.isAtVial() ? 1 : 0, revolver.getSteps());
-            }
-            if (timerMs > PAUSE_MS) {
-                state = TestState::TO_HOLE; entry = true; timerMs = 0;
+                printf("           >> Knopf druecken -> TO_HOLE.\n");
+                waitForBtn = true;
             }
             break;
 
@@ -163,7 +160,10 @@ int main()
                 revolver.moveSteps(RobotConfig::REV_STEPS_VIAL_TO_HOLE);
             }
             if (!revolver.isMoving()) {
+                printf("[REV-TEST] TO_HOLE fertig – steps=%ld\n", revolver.getSteps());
+                printf("           >> Knopf druecken -> AT_HOLE.\n");
                 state = TestState::AT_HOLE; entry = true; timerMs = 0;
+                waitForBtn = true;
             } else if (timerMs > TEST_TIMEOUT_MS) {
                 state = TestState::ERROR_STATE; entry = true; timerMs = 0;
             }
@@ -175,10 +175,9 @@ int main()
                 printf("[REV-TEST] AT_HOLE – steps=%ld  raw=%d\n",
                        revolver.getSteps(), revolver.isAtVial() ? 1 : 0);
                 printf("           raw=0 -> Loch frei (korrekt)\n");
-                printf("           raw=1 -> Loch blockiert (REV_STEPS_VIAL_TO_HOLE anpassen)\n");
-            }
-            if (timerMs > PAUSE_MS) {
-                state = TestState::TO_VIAL; entry = true; timerMs = 0;
+                printf("           raw=1 -> Loch blockiert (Schritte anpassen)\n");
+                printf("           >> Knopf druecken -> TO_VIAL.\n");
+                waitForBtn = true;
             }
             break;
 
@@ -190,7 +189,10 @@ int main()
                 revolver.moveSteps(-RobotConfig::REV_STEPS_VIAL_TO_HOLE);
             }
             if (!revolver.isMoving()) {
+                printf("[REV-TEST] TO_VIAL fertig – steps=%ld\n", revolver.getSteps());
+                printf("           >> Knopf druecken -> BACK_VIAL.\n");
                 state = TestState::BACK_VIAL; entry = true; timerMs = 0;
+                waitForBtn = true;
             } else if (timerMs > TEST_TIMEOUT_MS) {
                 state = TestState::ERROR_STATE; entry = true; timerMs = 0;
             }
@@ -201,25 +203,25 @@ int main()
                 entry = false;
                 printf("[REV-TEST] BACK_VIAL – raw=%d  steps=%ld\n",
                        revolver.isAtVial() ? 1 : 0, revolver.getSteps());
-            }
-            if (timerMs > PAUSE_MS) {
-                state = TestState::ADVANCE; entry = true; timerMs = 0;
+                printf("           >> Knopf druecken -> ADVANCE.\n");
+                waitForBtn = true;
             }
             break;
 
         case TestState::ADVANCE:
             if (entry) {
                 entry = false;
-                printf("[REV-TEST] ADVANCE: CW -> naechstes Vial\n");
+                printf("[REV-TEST] ADVANCE: CW -> naechstes Vial...\n");
                 revolver.resetTriggerCount();
                 revolver.turnCW();
             }
-            // Nach STARTUP_DELAY_MS kann die Lichtschranke als Stop gelten
             if (timerMs > STARTUP_DELAY_MS && revolver.getTriggerCount() >= 1) {
                 revolver.stop();
                 printf("[REV-TEST] Naechstes Vial – trig=%d  steps=%ld\n",
                        revolver.getTriggerCount(), revolver.getSteps());
+                printf("           >> Knopf druecken -> NEXT_VIAL.\n");
                 state = TestState::NEXT_VIAL; entry = true; timerMs = 0;
+                waitForBtn = true;
             } else if (timerMs > TEST_TIMEOUT_MS) {
                 state = TestState::ERROR_STATE; entry = true; timerMs = 0;
             }
@@ -228,9 +230,9 @@ int main()
         case TestState::NEXT_VIAL:
             if (entry) {
                 entry = false;
-                printf("[REV-TEST] NEXT_VIAL – weiter zu AT_VIAL\n");
-            }
-            if (timerMs > PAUSE_MS) {
+                printf("[REV-TEST] NEXT_VIAL – Zyklus fertig.\n");
+                printf("           >> Knopf druecken -> naechstes AT_VIAL.\n");
+                waitForBtn = true;
                 state = TestState::AT_VIAL; entry = true; timerMs = 0;
             }
             break;
@@ -239,13 +241,18 @@ int main()
             if (entry) {
                 entry = false;
                 revolver.stop();
-                printf("[REV-TEST] !!! TIMEOUT – alles gestoppt. Knopf zum Reset.\n");
+                enableMotors = 0;
+                printf("[REV-TEST] !!! TIMEOUT – gestoppt. Knopf druecken fuer Reset.\n");
             }
             ledBusy = (timerMs % 400 < 200) ? 1 : 0;
+            if (btnNow) {
+                ledBusy = 0;
+                state = TestState::IDLE; entry = true; timerMs = 0;
+            }
             break;
         }
 
-        // Diagnose alle 500 ms
+        // Diagnose alle 500 ms (nur waehrend Bewegung sinnvoll)
         if (++printCnt >= (500 / PERIOD_MS)) {
             printCnt = 0;
             printf("[DIAG] %-10s  raw=%d  trig=%d  steps=%ld  t=%d ms\n",
