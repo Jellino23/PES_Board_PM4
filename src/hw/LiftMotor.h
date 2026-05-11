@@ -30,7 +30,12 @@ public:
 
     // --- Endschalter (TCST2103: active LOW) ---
     bool isAtEnd();
+    bool isAtTop();
 
+    // --- Flankenzaehler (fuer Lift-Down Positionierung) ---
+    void update();
+    void resetTriggerCount();
+    int  getTriggerCount() const;
 
     int32_t getSteps();
 
@@ -39,4 +44,6 @@ private:
     DigitalIn      m_sensorLift;
     DigitalOut     m_magnet;
     float          m_speed;
+    bool           m_wasBlocked;
+    int            m_triggerCount;
 };

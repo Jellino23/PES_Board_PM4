@@ -2,7 +2,7 @@
 
 Revolver::Revolver(PinName stepPin, PinName dirPin, PinName enPin,
                    PinName sensorPin, float speed)
-    : m_stepper(stepPin, dirPin, enPin, 200 * 16)
+    : m_stepper(stepPin, dirPin, enPin, 200 * 64)
     , m_sensor(sensorPin)
     , m_wasBlocked(false)
     , m_triggerCount(0)
@@ -21,11 +21,11 @@ void Revolver::update()
     m_wasBlocked = blocked;
 }
 
-void Revolver::turnCW()  { m_stepper.setVelocity( m_speed); }
-void Revolver::turnCCW() { m_stepper.setVelocity(-m_speed); }
+void Revolver::turnCW()  { m_stepper.setVelocity(-m_speed); }
+void Revolver::turnCCW() { m_stepper.setVelocity( m_speed); }
 void Revolver::stop()    { m_stepper.setVelocity(0.0f); }
 
-void Revolver::moveSteps(int32_t steps) { m_stepper.setStepsRelative(steps, m_speed); }
+void Revolver::moveSteps(int32_t steps) { m_stepper.setStepsRelative(-steps, m_speed); }
 bool Revolver::isMoving() const         { return m_stepper.isMoving(); }
 
 // TCST2103: active LOW wenn Strahl unterbrochen

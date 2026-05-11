@@ -90,6 +90,7 @@ private:
 
     State m_state     = State::IDLE;
     bool  m_entry     = true;   // true = erster Aufruf in neuem Zustand
+    bool  m_leftPos   = false;  // Debounce: erst Sensor verlassen, dann naechsten Trigger akzeptieren
     int   m_timerMs   = 0;
     int   m_vialIndex = 0;
     bool  m_running   = false;
