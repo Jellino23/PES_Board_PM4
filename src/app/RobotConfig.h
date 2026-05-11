@@ -55,7 +55,7 @@ namespace RobotConfig {
     static constexpr PinName REV_DIR    = PC_14;
     static constexpr PinName REV_EN     = PB_13;
     static constexpr PinName  REV_VIAL            = PC_5; // Lichtschranke – nur Vial-Position
-    static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 10;   // Mikroschritte Vial → Loch (und zurück)
+    static constexpr int32_t REV_STEPS_VIAL_TO_HOLE = 400;  // Mikroschritte Vial → Loch (kalibrieren!)
 
 // ============================================================
 //  PINS  –  DECKEL (DC-Motor M1)
