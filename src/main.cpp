@@ -61,8 +61,11 @@ int main()
         RobotConfig::REVOLVER_SPEED
     );
 
+    // Lid-PWM-Pin explizit LOW halten – verhindert dass der angeschlossene
+    // DC-Motor (M3) dreht solange er nicht benutzt wird.
+    DigitalOut lidPwmHold(RobotConfig::LID_PWM, 0);
+
     DigitalOut ledBusy(LED1, 0);
-    DigitalOut enableMotors(PB_ENABLE_DCMOTORS, 0);
     DebounceIn userBtn(RobotConfig::START_BTN, PullUp);
     userBtn.fall(callback(&onButton));
 
@@ -110,12 +113,10 @@ int main()
         case TestState::IDLE:
             if (entry) {
                 entry = false;
-                enableMotors = 0;
                 ledBusy = 0;
                 printf("[REV-TEST] IDLE – PB1 druecken zum Starten.\n");
             }
             if (btnNow) {
-                enableMotors = 1;
                 ledBusy = 1;
                 vialNum = 0;
                 state = TestState::HOMING; entry = true; timerMs = 0;
@@ -241,7 +242,6 @@ int main()
             if (entry) {
                 entry = false;
                 revolver.stop();
-                enableMotors = 0;
                 printf("[REV-TEST] !!! TIMEOUT – gestoppt. Knopf druecken fuer Reset.\n");
             }
             ledBusy = (timerMs % 400 < 200) ? 1 : 0;
