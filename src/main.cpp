@@ -79,6 +79,7 @@ int main()
     int       printCnt    = 0;
     bool      waitForBtn  = false;   // true = Aktion fertig, warten auf Knopf
     int       vialNum     = 0;
+    bool      leftPos     = false;   // Debounce: erst Vial verlassen, dann naechsten Trigger zaehlen
 
     Timer loopTimer;
     loopTimer.start();
@@ -126,14 +127,16 @@ int main()
         case TestState::HOMING:
             if (entry) {
                 entry = false;
+                leftPos = false;
                 printf("[REV-TEST] HOMING: CCW bis Vial-Sensor...\n");
-                revolver.resetTriggerCount();
                 revolver.turnCCW();
             }
-            if (timerMs > STARTUP_DELAY_MS && revolver.getTriggerCount() >= 1) {
+            // m_wasBlocked im Revolver verhindert Falsch-Trigger beim Start am Vial.
+            // leftPos: falls wir mitten im Vial-Fenster starten, erst rausfahren.
+            if (!leftPos && !revolver.isAtVial()) leftPos = true;
+            if (leftPos && revolver.isAtVial()) {
                 revolver.stop();
-                printf("[REV-TEST] Homing fertig – trig=%d  steps=%ld\n",
-                       revolver.getTriggerCount(), revolver.getSteps());
+                printf("[REV-TEST] Homing fertig – steps=%ld\n", revolver.getSteps());
                 printf("           >> Knopf druecken zum Weiterfahren.\n");
                 state = TestState::AT_VIAL; entry = true; timerMs = 0;
                 waitForBtn = true;
@@ -212,14 +215,15 @@ int main()
         case TestState::ADVANCE:
             if (entry) {
                 entry = false;
+                leftPos = false;
                 printf("[REV-TEST] ADVANCE: CW -> naechstes Vial...\n");
-                revolver.resetTriggerCount();
                 revolver.turnCW();
             }
-            if (timerMs > STARTUP_DELAY_MS && revolver.getTriggerCount() >= 1) {
+            // leftPos: erst aktuelles Vial verlassen, dann naechsten Trigger abwarten
+            if (!leftPos && !revolver.isAtVial()) leftPos = true;
+            if (leftPos && revolver.isAtVial()) {
                 revolver.stop();
-                printf("[REV-TEST] Naechstes Vial – trig=%d  steps=%ld\n",
-                       revolver.getTriggerCount(), revolver.getSteps());
+                printf("[REV-TEST] Naechstes Vial – steps=%ld\n", revolver.getSteps());
                 printf("           >> Knopf druecken -> NEXT_VIAL.\n");
                 state = TestState::NEXT_VIAL; entry = true; timerMs = 0;
                 waitForBtn = true;
