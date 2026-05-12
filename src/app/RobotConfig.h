@@ -17,18 +17,18 @@ namespace RobotConfig {
     static constexpr int MAIN_PERIOD_MS  = 20;   // Haupt-Loop-Periode [ms]
     static constexpr int MEASURE_MS      = 5000; // Messdauer [ms]
     static constexpr int GRAB_WAIT_MS    = 300;  // Wartezeit nach Magnet an/aus [ms]
-    static constexpr int TIMEOUT_LIFT_MS = 6000; // Max. Zeit für Lift-Bewegung [ms]
-    static constexpr int TIMEOUT_REV_MS  = 5000; // Max. Zeit für Revolver-Bewegung [ms]
-    static constexpr int TIMEOUT_LID_MS  = 3000; // Max. Zeit für Deckel-Bewegung [ms]
+    static constexpr int TIMEOUT_LIFT_MS = 16000; // Max. Zeit für Lift-Bewegung [ms]
+    static constexpr int TIMEOUT_REV_MS  = 15000; // Max. Zeit für Revolver-Bewegung [ms]
+    static constexpr int TIMEOUT_LID_MS  = 10000; // Max. Zeit für Deckel-Bewegung [ms]
 
 // ============================================================
 //  GESCHWINDIGKEITEN
 // ============================================================
     static constexpr float LIFT_SPEED    = 1.0f;  // [rot/s]
     static constexpr float REVOLVER_SPEED = 0.1f; // [rot/s]
-    static constexpr float LID_SPEED     = 0.3f;  // [rot/s]
+    static constexpr float LID_SPEED     = 0.15f; // [rot/s]
 
-    static constexpr float LID_OPEN_ROTATIONS = 2.5f; // Umdrehungen für voll-offen
+    static constexpr float LID_OPEN_ROTATIONS = 0.75f; // Umdrehungen für voll-offen
 
 // ============================================================
 //  MOTOR-PARAMETER
@@ -46,7 +46,7 @@ namespace RobotConfig {
     static constexpr PinName LIFT_DIR    = PA_11;
     static constexpr PinName LIFT_EN     = PB_2;
     static constexpr PinName LIFT_SEN    = PB_0;  // Endschalter unten (TCST2103)
-    static constexpr PinName LIFT_MAGNET = PB_A1; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
+    static constexpr PinName LIFT_MAGNET = PC_3; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
 
 // ============================================================
 //  PINS  –  REVOLVER (Schrittmotor + TMC2209)

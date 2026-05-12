@@ -27,9 +27,8 @@ public:
      */
     Lid(PinName motorPWM, PinName encA, PinName encB,
         float gearRatio, float kn, float voltageMax,
-        PinName sensorClose,
-        float speed         = 0.3f,
-        float openRotations = 2.5f);
+        float speed         = 0.15f,
+        float openRotations = 0.75f);
 
     void openLid();
     void closeLid();
@@ -39,8 +38,7 @@ public:
     bool isOpen();
 
 private:
-    DCMotor    m_motor;
-    DigitalIn  m_sensorClose;
-    float      m_speed;
-    float      m_openRotations;
+    DCMotor m_motor;
+    float   m_speed;
+    float   m_openRotations;
 };
