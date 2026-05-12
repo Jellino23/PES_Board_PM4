@@ -13,6 +13,9 @@ LiftMotor::LiftMotor(PinName stepPin, PinName dirPin, PinName enPin,
     m_sensorLift.mode(PullUp);
     m_wasBlocked = (m_sensorLift.read() == 0);
     m_stepper.enable();
+    // Sensor alle 5 ms pollen – unabhaengig von Display-SPI-Blockierungen
+    m_sensorTicker.attach(callback(this, &LiftMotor::pollSensor),
+                          std::chrono::milliseconds{5});
 }
 
 void LiftMotor::moveUp()   { m_stepper.setVelocity( m_speed); }
@@ -27,7 +30,9 @@ bool LiftMotor::isGrabbing() { return m_magnet.read() == 1; }
 bool LiftMotor::isAtEnd() { return m_sensorLift.read() == 0; }
 bool LiftMotor::isAtTop() { return m_sensorLift.read() == 0; }
 
-void LiftMotor::update()
+void LiftMotor::update() {}  // Sensor-Polling laeuft im Ticker
+
+void LiftMotor::pollSensor()
 {
     bool blocked = (m_sensorLift.read() == 0);
     if (blocked && !m_wasBlocked)

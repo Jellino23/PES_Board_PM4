@@ -111,7 +111,6 @@ int main()
 
         // ---- Touch-Button ----
         if (touch.update()) {
-            // Neues Touch-Ereignis: prüfen ob im START/STOP-Bereich
             int tx = touch.getX();
             int ty = touch.getY();
             const DisplayLayout::Rect& btn = DisplayLayout::BTN_STARTSTOP;
@@ -151,7 +150,7 @@ int main()
             lastDispRun   = running;
             dispRefreshMs = 0;
             forceRedraw   = false;
-            layout.update(cur, robot.getTimerMs(), running,
+            layout.update(cur, robot.getVialIndex(), robot.getTimerMs(), running,
                           RobotConfig::MEASURE_MS,
                           dispTemp, dispHum, dispValid);
         } else if (cur == State::MEASURING) {

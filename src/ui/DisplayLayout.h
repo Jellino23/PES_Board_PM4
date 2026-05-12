@@ -33,7 +33,7 @@ public:
      * @param humidity    Luftfeuchtigkeit vom DHT11 [%]
      * @param sensorValid true wenn DHT11-Daten gültig
      */
-    void update(State state, int timerMs, bool running, int measureMs,
+    void update(State state, int vialIndex, int timerMs, bool running, int measureMs,
                 float temperature, float humidity, bool sensorValid);
 
     /** @brief Nur Fortschrittsbalken + Prozent aktualisieren (schnell, kein Flicker). */
@@ -48,5 +48,6 @@ private:
     void drawStatusText(State state, bool running);
     void drawProgressBar(int timerMs, int measureMs);
     void drawSensor(float temperature, float humidity, bool valid);
+    void drawVialCounter(int vialIndex);
     void drawStartStopButton(bool running);
 };

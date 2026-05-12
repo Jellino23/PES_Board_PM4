@@ -125,8 +125,8 @@ void Display::init()
     cmd(0x3A); data8(0x05);
     // MADCTL: MX=1, MV=1 → 90° CW Landscape (160×128)
     cmd(0x36); data8(0x60);
-    // Display-Inversion aktivieren (Joy-It Panel invertiert by default)
-    cmd(0x21);
+    // Display-Inversion aus (Landscape MADCTL 0x60 benoetigt keine Inversion)
+    cmd(0x20);
     // Display an
     cmd(0x29);
 

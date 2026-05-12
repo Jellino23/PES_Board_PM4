@@ -33,7 +33,7 @@ public:
     bool isAtTop();
 
     // --- Flankenzaehler (fuer Lift-Down Positionierung) ---
-    void update();
+    void update();               // bleibt fuer API-Kompatibilitaet (no-op)
     void resetTriggerCount();
     int  getTriggerCount() const;
 
@@ -44,6 +44,9 @@ private:
     DigitalIn      m_sensorLift;
     DigitalOut     m_magnet;
     float          m_speed;
-    bool           m_wasBlocked;
-    int            m_triggerCount;
+    Ticker         m_sensorTicker;     // unabhaengig vom Haupt-Loop
+    volatile bool  m_wasBlocked;
+    volatile int   m_triggerCount;
+
+    void pollSensor();  // Ticker-Callback, alle 5 ms
 };
