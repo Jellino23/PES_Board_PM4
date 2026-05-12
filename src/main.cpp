@@ -1,130 +1,92 @@
 /**
  * @file main.cpp
- * @brief Vial-Messanlage – Hauptprogramm.
+ * @brief DC-Motor (Deckel) Test – Encoder und Drehrichtung prüfen.
  *
- * Objekte werden in main() erstellt (nicht als statische Globals),
- * da statische Initialisierung vor dem RTOS-Start zu Crashes führt.
+ * Knopf (PB1) durchläuft folgende Zustände:
+ *   0 IDLE      – Motor gestoppt
+ *   1 FWD_SLOW  – vorwärts 0.05 rot/s
+ *   2 FWD_FAST  – vorwärts 0.15 rot/s
+ *   3 BWD_SLOW  – rückwärts 0.05 rot/s
+ *   4 BWD_FAST  – rückwärts 0.15 rot/s
+ *   5 OPEN      – setRotation(-openRot) → Deckel auffahren
+ *   6 CLOSE     – setRotation(+openRot) → Deckel zufahren
+ *   → zurück zu 0
+ *
+ * Serial (115200): jede Loop Rotation, Velocity, Encoder, Voltage ausgeben.
  */
 
 #include "mbed.h"
 #include "PESBoardPinMap.h"
 #include "DebounceIn.h"
-
-#include "hw/LiftMotor.h"
-#include "hw/Revolver.h"
 #include "hw/Lid.h"
-
-#include "app/StateMachine.h"
 #include "app/RobotConfig.h"
-#include "ui/Display.h"
 
-// Flag wird im ISR gesetzt, setRunning() im Haupt-Loop aufgerufen
-// (printf darf nicht aus ISR-Kontext aufgerufen werden)
-static volatile bool g_toggleRequest = false;
+static volatile bool g_btnPressed = false;
+static void onBtn() { g_btnPressed = true; }
 
-static void onButtonToggle()
-{
-    g_toggleRequest = true;
-}
-
-// ============================================================
-// MAIN
-// ============================================================
 int main()
 {
-    // Hardware
-    LiftMotor lift(
-        RobotConfig::LIFT_STEP, RobotConfig::LIFT_DIR,
-        RobotConfig::LIFT_EN,   RobotConfig::LIFT_SEN,
-        RobotConfig::LIFT_MAGNET, RobotConfig::LIFT_SPEED
-    );
-    Revolver revolver(
-        RobotConfig::REV_STEP, RobotConfig::REV_DIR,
-        RobotConfig::REV_EN,   RobotConfig::REV_VIAL,
-        RobotConfig::REVOLVER_SPEED
-    );
+    DigitalOut  enableMotors(PB_ENABLE_DCMOTORS, 1);   // H-Brücke einschalten
+    DigitalOut  led(LED1, 0);
+
     Lid lid(
         RobotConfig::LID_PWM,  RobotConfig::LID_ENCA,
         RobotConfig::LID_ENCB, RobotConfig::LID_GEAR_RATIO,
         RobotConfig::LID_KN,   RobotConfig::LID_VOLTAGE_MAX,
         RobotConfig::LID_SPEED, RobotConfig::LID_OPEN_ROTATIONS
     );
-    // Applikation
-    StateMachine robot(lift, revolver, lid);
 
-    // Bedienelemente
-    DigitalOut ledBusy(LED1, 0);
-    DigitalOut enableMotors(PB_ENABLE_DCMOTORS, 0);
-    DebounceIn userBtn(RobotConfig::START_BTN, PullUp);
-    userBtn.fall(callback(&onButtonToggle));
+    DebounceIn btn(RobotConfig::START_BTN, PullUp);
+    btn.fall(callback(&onBtn));
 
-    // Display
-    Display display(
-        RobotConfig::DISP_MOSI, NC,
-        RobotConfig::DISP_SCLK,
-        RobotConfig::DISP_CS,
-        RobotConfig::DISP_DC,
-        RobotConfig::DISP_RST,
-        8000000
-    );
-    display.init();
-    display.fillScreen(Display::BLACK);
-    display.drawText(2, 2, "STATE:", Display::GRAY);
-    display.drawText(2, 16, "IDLE", Display::WHITE);
+    const int   NUM_STATES  = 7;
+    const char* stateName[] = {
+        "IDLE", "FWD_SLOW", "FWD_FAST", "BWD_SLOW", "BWD_FAST", "OPEN", "CLOSE"
+    };
+    int state = 0;
 
-    printf("[main] Bereit – Startschalter (PB1) druecken zum Starten.\n");
+    printf("\n=== DC-Motor Test ===\n");
+    printf("Knopf (PB1) druecken zum Weiterschalten.\n");
+    printf("Zustand: %s\n", stateName[state]);
 
     Timer loopTimer;
     loopTimer.start();
-
-    State lastState  = State::IDLE;
-    int   printCount = 0;
+    int printCount = 0;
 
     while (true) {
         loopTimer.reset();
 
-        // Button-Toggle aus ISR-Flag verarbeiten
-        if (g_toggleRequest) {
-            g_toggleRequest = false;
-            robot.setRunning(!robot.isRunning());
+        if (g_btnPressed) {
+            g_btnPressed = false;
+            state = (state + 1) % NUM_STATES;
+
+            switch (state) {
+                case 0: lid.stopLid();              break;
+                case 1: lid.runVelocity( 0.05f);    break;
+                case 2: lid.runVelocity( 0.15f);    break;
+                case 3: lid.runVelocity(-0.05f);    break;
+                case 4: lid.runVelocity(-0.15f);    break;
+                case 5: lid.openLid();              break;
+                case 6: lid.closeLid();             break;
+            }
+
+            printf("[BTN] -> %s\n", stateName[state]);
+            led = (state != 0) ? 1 : 0;
         }
 
-        robot.update(RobotConfig::MAIN_PERIOD_MS);
-
-        enableMotors = robot.isRunning() ? 1 : 0;
-
-        // LED
-        if (robot.getState() == State::ERROR)
-            ledBusy = (robot.getTimerMs() % 400 < 200) ? 1 : 0;
-        else
-            ledBusy = robot.isRunning() ? 1 : 0;
-
-        // State-Wechsel sofort ausgeben
-        State cur = robot.getState();
-        if (cur != lastState) {
-            lastState = cur;
-            printf("[SM] -> %s\n", stateName(cur));
-            uint16_t col = (cur == State::ERROR) ? Display::RED
-                         : robot.isRunning()      ? Display::GREEN
-                                                  : Display::WHITE;
-            display.fillRect(0, 16, Display::WIDTH, 10, Display::BLACK);
-            display.drawText(2, 16, stateName(cur), col);
-        }
-
-        // Alle 2 s aktuellen State wiederholen
-        if (++printCount >= 100) {
+        // Alle 500 ms Diagnose ausgeben
+        if (++printCount >= 25) {
             printCount = 0;
-            printf("[SM] %s  run:%d  t:%d ms\n",
-                   stateName(robot.getState()),
-                   (int)robot.isRunning(),
-                   robot.getTimerMs());
+            printf("[LID] state=%-9s  rot=%6.3f  vel=%6.3f  enc=%6ld  V=%5.2f\n",
+                   stateName[state],
+                   lid.getRotation(),
+                   lid.getVelocity(),
+                   lid.getEncoderCount(),
+                   lid.getVoltage());
         }
 
         int elapsed = duration_cast<milliseconds>(loopTimer.elapsed_time()).count();
         int toSleep = RobotConfig::MAIN_PERIOD_MS - elapsed;
-        if (toSleep > 0)
-            thread_sleep_for(toSleep);
-        else
-            printf("Warnung: Loop %d ms zu langsam!\n", -toSleep);
+        if (toSleep > 0) thread_sleep_for(toSleep);
     }
 }
