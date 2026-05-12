@@ -90,6 +90,6 @@ namespace RobotConfig {
 // ============================================================
 //  PINS  –  DHT11 Temperatursensor (KY-015)
 // ============================================================
-    static constexpr PinName DHT_DATA = PB_D3;  // PB_12 – freier digitaler Pin
+    static constexpr PinName DHT_DATA = PB_4;
 
 } // namespace RobotConfig

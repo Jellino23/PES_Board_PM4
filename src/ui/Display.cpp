@@ -123,8 +123,8 @@ void Display::init()
     cmd(0x11); thread_sleep_for(250);
     // Pixel-Format: 16 Bit
     cmd(0x3A); data8(0x05);
-    // MADCTL
-    cmd(0x36); data8(0x00);
+    // MADCTL: MX=1, MV=1 → 90° CW Landscape (160×128)
+    cmd(0x36); data8(0x60);
     // Display-Inversion aktivieren (Joy-It Panel invertiert by default)
     cmd(0x21);
     // Display an
@@ -187,24 +187,26 @@ void Display::fillScreen(uint16_t color)
     fillRect(0, 0, WIDTH, HEIGHT, color);
 }
 
-void Display::drawChar(int x, int y, char c, uint16_t fg, uint16_t bg)
+void Display::drawChar(int x, int y, char c, uint16_t fg, uint16_t bg, int scale)
 {
+    if (scale < 1) scale = 1;
     if (c < 32 || c > 'z') c = ' ';
     const uint8_t* glyph = s_font[static_cast<uint8_t>(c) - 32];
     for (int col = 0; col < 5; col++) {
         for (int row = 0; row < 7; row++) {
             bool on = (glyph[col] >> row) & 1;
-            fillRect(x + col, y + row, 1, 1, on ? fg : bg);
+            fillRect(x + col * scale, y + row * scale, scale, scale, on ? fg : bg);
         }
     }
 }
 
-void Display::drawText(int x, int y, const char* s, uint16_t fg, uint16_t bg)
+void Display::drawText(int x, int y, const char* s, uint16_t fg, uint16_t bg, int scale)
 {
+    if (scale < 1) scale = 1;
     int cx = x;
     while (*s) {
-        drawChar(cx, y, *s++, fg, bg);
-        cx += 6;
-        if (cx > WIDTH - 6) { cx = 0; y += 9; }
+        drawChar(cx, y, *s++, fg, bg, scale);
+        cx += 6 * scale;
+        if (cx > WIDTH - 6 * scale) { cx = 0; y += 9 * scale; }
     }
 }

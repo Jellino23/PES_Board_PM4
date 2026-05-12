@@ -1,55 +1,68 @@
 #include "XPT2046.h"
 
-// XPT2046 Befehlsbytes (differential mode, 12-bit)
-static constexpr uint8_t CMD_READ_X = 0xD0; // A2=1 A1=0 A0=1
-static constexpr uint8_t CMD_READ_Y = 0x90; // A2=1 A1=0 A0=0
+static constexpr uint8_t CMD_READ_X = 0xD0;
+static constexpr uint8_t CMD_READ_Y = 0x90;
 
 XPT2046::XPT2046(PinName mosi, PinName miso, PinName sck,
                  PinName cs, PinName irq)
     : m_spi(mosi, miso, sck),
-      m_cs(cs, 1),           // CS inaktiv (HIGH)
+      m_cs(cs, 1),
       m_irq(irq, PullUp)
 {
-    m_spi.format(8, 0);           // 8-Bit, SPI Mode 0
-    m_spi.frequency(2'000'000);   // 2 MHz
+    m_spi.format(8, 0);
+    m_spi.frequency(2'000'000);
 
-    // IRQ-Handler bei fallender Flanke (Bildschirm wird berührt)
+    // IRQ: nur Flag setzen, kein SPI im ISR-Kontext
     m_irq.fall(callback(this, &XPT2046::onIRQ));
 }
 
 // ============================================================
-// IRQ-Handler – wird im Interrupt-Kontext aufgerufen
+// Haupt-Loop: SPI-Lesen hier (nicht im ISR)
 // ============================================================
-void XPT2046::onIRQ()
+bool XPT2046::update()
 {
-    uint16_t rawX = readRaw(CMD_READ_X);
-    uint16_t rawY = readRaw(CMD_READ_Y);
+    bool touched = isTouched();
 
-    m_pixelX = mapToPixel(rawX, RAW_X_MIN, RAW_X_MAX, SCREEN_W);
-    m_pixelY = mapToPixel(rawY, RAW_Y_MIN, RAW_Y_MAX, SCREEN_H);
+    // Koordinaten lesen wenn Flag gesetzt (von IRQ) und Finger noch drauf
+    if (m_touched && touched) {
+        m_touched = false;
+
+        uint16_t rawX = readRaw(CMD_READ_X);
+        uint16_t rawY = readRaw(CMD_READ_Y);
+
+        // Landscape-Mapping (MADCTL 0x60, 90°CW):
+        // physikalisch-X → Landscape-Y, physikalisch-Y → Landscape-X (gespiegelt)
+        m_pixelY = mapToPixel(rawX, RAW_X_MIN, RAW_X_MAX, SCREEN_H);
+        m_pixelX = (SCREEN_W - 1) - mapToPixel(rawY, RAW_Y_MIN, RAW_Y_MAX, SCREEN_W);
+    }
+
+    // Flanken-Detektion: true nur beim ersten Frame der Berührung
+    bool newTouch = touched && !m_wasTouched;
+    m_wasTouched  = touched;
+    return newTouch;
 }
 
 // ============================================================
-// SPI-Transaktion: 8-Bit Befehl senden, 16-Bit Antwort lesen
-// Rückgabe: obere 12 Bit des ADC-Ergebnisses
+// ISR: nur Flag – kein SPI!
+// ============================================================
+void XPT2046::onIRQ()
+{
+    m_touched = true;
+}
+
+// ============================================================
+// SPI-Transaktion: 8-Bit Befehl, 16-Bit Antwort (12-Bit ADC)
 // ============================================================
 uint16_t XPT2046::readRaw(uint8_t cmd)
 {
     m_cs = 0;
-
-    m_spi.write(cmd);                          // Befehl senden
-    uint16_t hi = m_spi.write(0x00);           // High-Byte lesen
-    uint16_t lo = m_spi.write(0x00);           // Low-Byte lesen
-
+    m_spi.write(cmd);
+    uint16_t hi = m_spi.write(0x00);
+    uint16_t lo = m_spi.write(0x00);
     m_cs = 1;
-
-    // 12-Bit Wert: hi[7:0] << 5 | lo[7:3]
     return static_cast<uint16_t>(((hi << 8) | lo) >> 3);
 }
 
-// ============================================================
-// Hilfsfunktionen
-// ============================================================
 int XPT2046::clamp(int val, int lo, int hi)
 {
     if (val < lo) return lo;

@@ -23,8 +23,8 @@ public:
     static constexpr uint16_t GRAY   = 0x7BEF;
     static constexpr uint16_t ORANGE = 0xFD20;
 
-    static constexpr int WIDTH  = 128;
-    static constexpr int HEIGHT = 160;
+    static constexpr int WIDTH  = 160;
+    static constexpr int HEIGHT = 128;
 
     /**
      * @param mosi, miso, sclk  SPI-Pins
@@ -47,13 +47,14 @@ public:
      * @param fg     Vordergrundfarbe (RGB565)
      * @param bg     Hintergrundfarbe (RGB565)
      */
-    void drawChar(int x, int y, char c, uint16_t fg, uint16_t bg = BLACK);
+    void drawChar(int x, int y, char c, uint16_t fg, uint16_t bg = BLACK, int scale = 1);
 
     /**
-     * @brief String zeichnen.  Zeilenumbruch bei WIDTH-6.
+     * @brief String zeichnen.  Zeilenumbruch bei WIDTH-(6*scale).
+     * @param scale  Vergrösserungsfaktor (1 = 5×7 px, 2 = 10×14 px, …)
      */
     void drawText(int x, int y, const char* s,
-                  uint16_t fg = WHITE, uint16_t bg = BLACK);
+                  uint16_t fg = WHITE, uint16_t bg = BLACK, int scale = 1);
 
 private:
     SPI        m_spi;
