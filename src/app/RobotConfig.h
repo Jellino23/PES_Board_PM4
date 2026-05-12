@@ -16,7 +16,7 @@ namespace RobotConfig {
 
     static constexpr int MAIN_PERIOD_MS  = 20;   // Haupt-Loop-Periode [ms]
     static constexpr int MEASURE_MS      = 5000; // Messdauer [ms]
-    static constexpr int GRAB_WAIT_MS    = 300;  // Wartezeit nach Magnet an/aus [ms]
+    static constexpr int GRAB_WAIT_MS    = 1000;  // Wartezeit nach Magnet an/aus [ms]
     static constexpr int TIMEOUT_LIFT_MS = 16000; // Max. Zeit für Lift-Bewegung [ms]
     static constexpr int TIMEOUT_REV_MS  = 15000; // Max. Zeit für Revolver-Bewegung [ms]
     static constexpr int TIMEOUT_LID_MS  = 10000; // Max. Zeit für Deckel-Bewegung [ms]
@@ -26,9 +26,9 @@ namespace RobotConfig {
 // ============================================================
     static constexpr float LIFT_SPEED    = 1.0f;  // [rot/s]
     static constexpr float REVOLVER_SPEED = 0.1f; // [rot/s]
-    static constexpr float LID_SPEED     = 0.15f; // [rot/s]
+    static constexpr float LID_SPEED     = 0.1f; // [rot/s]
 
-    static constexpr float LID_OPEN_ROTATIONS = 0.75f; // Umdrehungen für voll-offen
+    static constexpr float LID_OPEN_ROTATIONS = 0.35f;  // Umdrehungen für voll-offen (~0.4 gemessen)
 
 // ============================================================
 //  MOTOR-PARAMETER

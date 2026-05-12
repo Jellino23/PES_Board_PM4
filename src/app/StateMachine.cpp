@@ -274,9 +274,12 @@ void StateMachine::handleCloseLid()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Deckel schliessen\n");
+        printf("[SM] Deckel schliessen  openRot=%.3f\n", m_lid.getRotation());
         m_lid.closeLid();
     }
+    if (m_timerMs % 500 < RobotConfig::MAIN_PERIOD_MS)
+        printf("[LID CLOSE] t=%d  rot=%.3f  isClosed=%d\n",
+               m_timerMs, m_lid.getRotation(), (int)m_lid.isClosed());
     if (m_lid.isClosed()) {
         m_lid.stopLid();
         transitionTo(State::MEASURING);

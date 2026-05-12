@@ -263,6 +263,13 @@ public:
      */
     void setFastPWMPeriod_mus(int period_mus);
 
+    /**
+     * @brief Invert the encoder direction (use when motor and encoder polarities are swapped).
+     *
+     * @param inverted true to invert encoder counts.
+     */
+    void setEncoderInverted(bool inverted);
+
 #if PERFORM_GPA_MEAS
     void startGPA();
 #endif
@@ -311,6 +318,7 @@ private:
     CntrlMode m_cntrlMode = CntrlMode::Velocity;
 
     bool m_enable_motion_planner;
+    bool m_encoder_inverted = false;
 
     // motor parameters
     float m_counts_per_turn;

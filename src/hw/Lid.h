@@ -27,15 +27,16 @@ public:
      */
     Lid(PinName motorPWM, PinName encA, PinName encB,
         float gearRatio, float kn, float voltageMax,
-        float speed         = 0.15f,
-        float openRotations = 0.025f);
+        float speed         = 0.1f,
+        float openRotations = 0.35f);
 
     void openLid();
     void closeLid();
     void stopLid();
 
-    bool isClosed();
-    bool isOpen();
+    bool  isClosed();
+    bool  isOpen();
+    float getRotation() const;
 
 private:
     DCMotor m_motor;

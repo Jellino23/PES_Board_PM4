@@ -226,6 +226,11 @@ void DCMotor::setMotionPlannerPosition(float position) {
     m_Motion.setPosition(position);
 }
 
+void DCMotor::setEncoderInverted(bool inverted)
+{
+    m_encoder_inverted = inverted;
+}
+
 void DCMotor::setFastPWMPeriod_mus(int period_mus)
 {
     // set the period of the PWM signal in microseconds
@@ -263,8 +268,9 @@ void DCMotor::threadTask()
 
         // update counts (avoid overflow)
         const short count_actual = m_EncoderCounter.read();
-        const short count_delta = count_actual - m_count_previous; // avoid overflow
+        short count_delta = count_actual - m_count_previous; // avoid overflow
         m_count_previous = count_actual;
+        if (m_encoder_inverted) count_delta = -count_delta;
 
         // update rotation
         m_count += count_delta;
