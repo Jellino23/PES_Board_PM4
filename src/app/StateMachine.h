@@ -88,12 +88,12 @@ private:
     Revolver&  m_revolver;
     Lid&       m_lid;
 
-    State m_state     = State::IDLE;
-    bool  m_entry     = true;   // true = erster Aufruf in neuem Zustand
-    bool  m_leftPos   = false;  // Debounce: erst Sensor verlassen, dann naechsten Trigger akzeptieren
-    int   m_timerMs   = 0;
-    int   m_vialIndex = 0;
-    bool  m_running   = false;
+    State m_state        = State::IDLE;
+    bool  m_entry        = true;
+    bool  m_leftPos      = false;
+    int   m_timerMs      = 0;
+    int   m_vialIndex    = 0;
+    bool  m_running      = false;
 
     void transitionTo(State next);
     void stopAll();

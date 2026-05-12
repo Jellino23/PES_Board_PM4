@@ -324,7 +324,7 @@ void StateMachine::handleLiftDownRetrieve()
         m_lift.moveDown();
     }
     if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
-    if (m_leftPos && m_lift.getTriggerCount() >= 2) {
+    if (m_leftPos && m_lift.getTriggerCount() >= 1) {
         m_lift.stop();
         transitionTo(State::GRAB_AGAIN);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {
@@ -348,11 +348,12 @@ void StateMachine::handleLiftUpReturn()
 {
     if (m_entry) {
         m_entry = false; m_leftPos = false;
+        m_lift.resetTriggerCount();
         printf("[SM] Lift hoch (Vial zurueck)\n");
         m_lift.moveUp();
     }
     if (!m_leftPos && !m_lift.isAtTop()) m_leftPos = true;
-    if (m_leftPos && m_lift.isAtTop()) {
+    if (m_leftPos && m_lift.getTriggerCount() >= 2) {
         m_lift.stop();
         transitionTo(State::ROTATE_BACK);
     } else if (m_timerMs > RobotConfig::TIMEOUT_LIFT_MS) {

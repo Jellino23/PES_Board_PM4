@@ -27,8 +27,8 @@ public:
      */
     Lid(PinName motorPWM, PinName encA, PinName encB,
         float gearRatio, float kn, float voltageMax,
-        float speed         = 0.1f,
-        float openRotations = 0.35f);
+        float speed         = 0.15f,
+        float openRotations = 0.8f);
 
     void openLid();
     void closeLid();

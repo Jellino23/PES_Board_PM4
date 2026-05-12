@@ -26,9 +26,9 @@ namespace RobotConfig {
 // ============================================================
     static constexpr float LIFT_SPEED    = 1.0f;  // [rot/s]
     static constexpr float REVOLVER_SPEED = 0.1f; // [rot/s]
-    static constexpr float LID_SPEED     = 0.1f; // [rot/s]
+    static constexpr float LID_SPEED     = 0.15f; // [rot/s]
 
-    static constexpr float LID_OPEN_ROTATIONS = 0.35f;  // Umdrehungen für voll-offen (~0.4 gemessen)
+    static constexpr float LID_OPEN_ROTATIONS = 0.8f;  // Umdrehungen für voll-offen (~0.4 gemessen)
 
 // ============================================================
 //  MOTOR-PARAMETER
