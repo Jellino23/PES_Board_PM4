@@ -28,15 +28,29 @@ static void onButtonToggle() { g_toggleRequest = true; }
 
 int main()
 {
-    // Hubmagnet-Ausgang – startet AUS (0)
-    DigitalOut magnet(RobotConfig::LIFT_MAGNET, 0);
+    // Hubmagnet-Ausgang an PC_6 (=PB_D2), echter Digital-Ausgang.
+    // PC_3/PC_2 (=PB_A1/PB_A0) sind ANALOG-Eingaenge (board-seitige RC-/
+    // Teiler-Hardware) und als Treiber-Ausgang untauglich.
+    //
+    // INVERTIERTE LOGIK: Treiberstufe ist ein NPN-Pegelumsetzer
+    //   GPIO -[150R]- Basis NPN,  Basis -[10k]- +5V (Pull-up),
+    //   Emitter -> GND,  Collector -> MOSFET-Gate (Gate -[10k]- +12V).
+    //   GPIO LOW  -> NPN sperrt -> Gate auf 12V -> MOSFET an -> Magnet AN
+    //   GPIO HIGH -> NPN leitet -> Gate auf 0V  -> MOSFET aus -> Magnet AUS
+    //   GPIO high-Z (Reset/Boot/Flash) -> 5V-Pull-up haelt NPN an
+    //                                     -> Magnet sicher AUS.
+    // Steuerdraht (NPN-Basis ueber 150R) an Anschluss PB_D2.
+    static constexpr PinName MAGNET_PIN = PC_6; // PB_D2
+    static constexpr int     MAG_ON  = 0;       // GPIO LOW  = Magnet AN
+    static constexpr int     MAG_OFF = 1;       // GPIO HIGH = Magnet AUS
+    DigitalOut magnet(MAGNET_PIN, MAG_OFF);
 
     // Statusanzeige
     DigitalOut led(LED1, 0);
 
-    // Manche Aufbauten speisen den Magnet-Treiber ueber die Motor-Enable-
-    // Leitung. Dauerhaft aktivieren, damit der Magnet ueberhaupt Strom bekommt.
-    DigitalOut enableMotors(PB_ENABLE_DCMOTORS, 1);
+    // Magnet-Treiber (BD139) wird NICHT ueber PB_ENABLE_DCMOTORS versorgt
+    // (vom Nutzer bestaetigt) – Zeile bleibt ohne Wirkung auf den Magneten.
+    DigitalOut enableMotors(PB_ENABLE_DCMOTORS, 0);
 
     // Physischer Startschalter: active-low mit internem PullUp,
     // fall() loest beim Druecken aus.
@@ -45,7 +59,7 @@ int main()
 
     bool magnetOn = false;
 
-    printf("\n[TEST] Hubmagnet-Test auf %s (PC_3)\n", "LIFT_MAGNET");
+    printf("\n[TEST] Hubmagnet-Test auf PC_6 (PB_D2), NPN-Stufe (invertiert)\n");
     printf("[TEST] Startschalter (PB_1) druecken zum Umschalten.\n");
     printf("[TEST] Aktueller Zustand: AUS\n");
 
@@ -54,10 +68,10 @@ int main()
             g_toggleRequest = false;
 
             magnetOn = !magnetOn;
-            magnet   = magnetOn ? 1 : 0;
+            magnet   = magnetOn ? MAG_ON : MAG_OFF;
             led      = magnetOn ? 1 : 0;
 
-            printf("[TEST] Magnet %s  (PC_3 = %d)\n",
+            printf("[TEST] Magnet %s  (PC_6 = %d)\n",
                    magnetOn ? "AN " : "AUS", magnet.read());
         }
 
