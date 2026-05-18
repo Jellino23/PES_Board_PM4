@@ -276,6 +276,7 @@ Ohne `-I src/hw -I src/ui -I src/app` in `build_flags` findet der Compiler `#inc
 - [x] Kompilierfehler `ThreadFlag`, `const`-Fehler, `PESBoardPinMap` behoben
 - [x] `platformio.ini` mit korrekten Include-Pfaden
 - [x] **Hubmagnet funktionsfähig** – auf `PC_6` (`PB_D2`) umgezogen (PC_3/PC_8 als Analog-Input/Display-Pin untauglich). Hardware: invertierende NPN-Treiberstufe (BC547): GPIO→1 kΩ→Basis, 10 kΩ Basis-Pull-up auf +5 V, Collector→MOSFET-Gate, Gate-Pull-up 10 kΩ→+12 V, Freilaufdiode parallel zur Spule. **Logik invertiert** (`grab()` = GPIO LOW), zentral in `LiftMotor.cpp`. Verifiziert am Test-Branch `test/hubmagnet-pc3`.
+- [x] **Greifer-Ablauf: Puls statt Dauerstrom** – Magnet wird in `GRAB`/`GRAB_AGAIN`/`RELEASE`/`RELEASE_HOME` nur als kurzer Puls (`GRAB_WAIT_MS`) aktiviert, danach AUS. Alle Bewegungen (Lift hoch/runter, Revolver) laufen mit Magnet AUS = Greifer „zu" = kollisionsfrei. Hochfahr-Zustände rufen zusätzlich defensiv `release()` auf. (Bistabiler Latch: Puls greift/löst, hält stromlos.)
 - [ ] **Restliche Pin-Belegung noch nicht final** – `RobotConfig.h` ggf. weiter an tatsächliche Verdrahtung anpassen (REV_STEP/DIR, LIFT_EN/REV_EN prüfen)
 - [ ] Display-Code noch nicht auf echter Hardware getestet
 - [ ] Touch-Controller XPT2046 noch nicht integriert (Klasse existiert im v2-Ordner, aber nicht im aktuellen Build)
