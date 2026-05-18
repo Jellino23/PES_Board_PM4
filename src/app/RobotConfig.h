@@ -46,7 +46,7 @@ namespace RobotConfig {
     static constexpr PinName LIFT_DIR    = PA_11;
     static constexpr PinName LIFT_EN     = PB_2;
     static constexpr PinName LIFT_SEN    = PB_0;  // Endschalter unten (TCST2103)
-    static constexpr PinName LIFT_MAGNET = PC_3; // Hubmagnet (war PC_8, Konflikt mit DISP_DC)
+    static constexpr PinName LIFT_MAGNET = PC_6; // Hubmagnet via NPN-Treiberstufe (PB_D2; PC_3/PC_8 untauglich)
 
 // ============================================================
 //  PINS  –  REVOLVER (Schrittmotor + TMC2209)
@@ -63,7 +63,7 @@ namespace RobotConfig {
     static constexpr PinName LID_PWM   = PB_PWM_M3;
     static constexpr PinName LID_ENCA  = PB_ENC_A_M3;
     static constexpr PinName LID_ENCB  = PB_ENC_B_M3;
-    static constexpr PinName LID_CLOSE = PC_6;    // Endschalter geschlossen
+    static constexpr PinName LID_CLOSE = PC_3;    // Endschalter geschlossen (frei: PC_6 -> Hubmagnet)
 
 // ============================================================
 //  PINS  –  DISPLAY (SPI1)

@@ -5,7 +5,7 @@ LiftMotor::LiftMotor(PinName stepPin, PinName dirPin, PinName enPin,
                      PinName magnetPin, float speed)
     : m_stepper(stepPin, dirPin, enPin, 200 * 16)
     , m_sensorLift(sensorLift)
-    , m_magnet(magnetPin, 0)
+    , m_magnet(magnetPin, 1)   // INVERTIERT (NPN-Stufe): 1 = AUS, 0 = AN
     , m_speed(speed)
     , m_wasBlocked(false)
     , m_triggerCount(0)
@@ -22,9 +22,13 @@ void LiftMotor::moveUp()   { m_stepper.setVelocity( m_speed); }
 void LiftMotor::moveDown() { m_stepper.setVelocity(-m_speed); }
 void LiftMotor::stop()     { m_stepper.setVelocity(0.0f); }
 
-void LiftMotor::grab()    { m_magnet = 1; }
-void LiftMotor::release() { m_magnet = 0; }
-bool LiftMotor::isGrabbing() { return m_magnet.read() == 1; }
+// Hubmagnet haengt an einer invertierenden NPN-Treiberstufe (BC547):
+// GPIO LOW (0) -> NPN sperrt -> MOSFET-Gate 12 V -> Magnet AN
+// GPIO HIGH(1) -> NPN leitet -> Gate 0 V         -> Magnet AUS
+// 5V-Basis-Pull-up haelt den Magnet bei Reset/Boot sicher AUS.
+void LiftMotor::grab()    { m_magnet = 0; }   // 0 = Magnet AN
+void LiftMotor::release() { m_magnet = 1; }   // 1 = Magnet AUS
+bool LiftMotor::isGrabbing() { return m_magnet.read() == 0; }
 
 // TCST2103: active LOW wenn Strahl unterbrochen
 bool LiftMotor::isAtEnd() { return m_sensorLift.read() == 0; }

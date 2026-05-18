@@ -9,7 +9,8 @@
  * Hardware:
  *  - Schrittmotor mit TMC2209-Treiber
  *  - Endschalter oben + unten (TCST2103, Phototransistor active LOW)
- *  - Hubmagnet (HIGH = angezogen = Vial gegriffen)
+ *  - Hubmagnet via invertierender NPN-Treiberstufe an PC_6/PB_D2
+ *    (GPIO LOW = Magnet angezogen = Vial gegriffen)
  */
 class LiftMotor {
 public:

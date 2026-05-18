@@ -185,7 +185,7 @@ Alle Pins in `src/app/RobotConfig.h`. Makros kommen aus `include/PESBoardPinMap.
 | `LIFT_EN` | `PB_D2` | PC_6 | Schrittmotor Lift EN |
 | `LIFT_TOP` | `PB_A0` | PC_2 | Endschalter Lift oben |
 | `LIFT_BOT` | `PB_A1` | PC_3 | Endschalter Lift unten |
-| `LIFT_MAGNET` | `PB_D3` | PB_12 | Hubmagnet |
+| `LIFT_MAGNET` | `PB_D2` | PC_6 | Hubmagnet via invertierender NPN-Treiberstufe (BC547) |
 | `REV_STEP` | `PC_6` | PC_6 | Schrittmotor Revolver STEP |
 | `REV_DIR` | `PC_8` | PC_8 | Schrittmotor Revolver DIR |
 | `REV_EN` | `PB_12` | PB_12 | Schrittmotor Revolver EN |
@@ -194,7 +194,7 @@ Alle Pins in `src/app/RobotConfig.h`. Makros kommen aus `include/PESBoardPinMap.
 | `LID_PWM` | `PB_PWM_M1` | PB_13 | Deckel DC-Motor PWM |
 | `LID_ENCA` | `PB_ENC_A_M1` | PA_6 | Deckel Encoder A |
 | `LID_ENCB` | `PB_ENC_B_M1` | PC_7 | Deckel Encoder B |
-| `LID_CLOSE` | `PC_1` | PC_1 | Endschalter Deckel geschlossen |
+| `LID_CLOSE` | `PB_A1` | PC_3 | Endschalter Deckel geschlossen (unbenutzt; PC_6 fuer Hubmagnet freigegeben) |
 | `DISP_MOSI` | `PB_5` | PB_5 | Display SPI MOSI |
 | `DISP_MISO` | `PB_4` | PB_4 | Display SPI MISO |
 | `DISP_SCLK` | `PB_3` | PB_3 | Display SPI SCLK |
@@ -275,7 +275,8 @@ Ohne `-I src/hw -I src/ui -I src/app` in `build_flags` findet der Compiler `#inc
 - [x] Alle Klassen implementiert und modular aufgeteilt
 - [x] Kompilierfehler `ThreadFlag`, `const`-Fehler, `PESBoardPinMap` behoben
 - [x] `platformio.ini` mit korrekten Include-Pfaden
-- [ ] **Pin-Belegung noch nicht final** – `RobotConfig.h` muss an tatsächliche Verdrahtung angepasst werden. Insbesondere REV_STEP/DIR und LIFT_EN/REV_EN könnten sich mit anderen Funktionen überschneiden (PC_6 = `PB_D2` und `REV_STEP` beide auf PC_6 → **Konflikt, muss geprüft werden**)
+- [x] **Hubmagnet funktionsfähig** – auf `PC_6` (`PB_D2`) umgezogen (PC_3/PC_8 als Analog-Input/Display-Pin untauglich). Hardware: invertierende NPN-Treiberstufe (BC547): GPIO→1 kΩ→Basis, 10 kΩ Basis-Pull-up auf +5 V, Collector→MOSFET-Gate, Gate-Pull-up 10 kΩ→+12 V, Freilaufdiode parallel zur Spule. **Logik invertiert** (`grab()` = GPIO LOW), zentral in `LiftMotor.cpp`. Verifiziert am Test-Branch `test/hubmagnet-pc3`.
+- [ ] **Restliche Pin-Belegung noch nicht final** – `RobotConfig.h` ggf. weiter an tatsächliche Verdrahtung anpassen (REV_STEP/DIR, LIFT_EN/REV_EN prüfen)
 - [ ] Display-Code noch nicht auf echter Hardware getestet
 - [ ] Touch-Controller XPT2046 noch nicht integriert (Klasse existiert im v2-Ordner, aber nicht im aktuellen Build)
 - [ ] Kalibrierung: Schrittanzahl für Revolver-Slots (Anzahl Schritte zwischen zwei Slots) noch nicht definiert – aktuell rein sensorbasiert
