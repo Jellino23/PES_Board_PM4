@@ -9,11 +9,11 @@ Die Anlage ist ein automatisierter Messroboter für Lumineszenz-/Fluoreszenzmess
 ## Ablauf (ein vollständiger Messzyklus)
 
 ```
-1. HOMING          Lift fährt nach oben (Endschalter), Revolver dreht bis Vial-Lichtschranke
+1. HOMING          Magnet ZU (greifen). Lift fährt nach oben, Revolver dreht bis Vial-Lichtschranke
 
 2. LIFT_DOWN_PICK  Lift fährt nach unten zum Vial im Revolver
 
-3. GRAB            Hubmagnet wird aktiviert → Vial wird gegriffen (300 ms warten)
+3. GRAB            Magnet bleibt ZU (unverändert) → Vial wird gegriffen (Wartezeit GRAB_WAIT_MS)
 
 4. LIFT_UP         Lift fährt nach oben mit Vial
 
@@ -22,11 +22,11 @@ Die Anlage ist ein automatisierter Messroboter für Lumineszenz-/Fluoreszenzmess
 
 6. LIFT_DOWN_PLACE Vial wird durch das Loch in die Messkammer gefahren
 
-7. RELEASE         Hubmagnet aus → Vial bleibt in Messkammer
+7. RELEASE         Magnet AUF (lösen) → Vial bleibt in Messkammer
 
 8. LIFT_UP_EMPTY   Leeres Seil/Lift fährt hoch (aus Messkammer raus)
 
-9. CLOSE_LID       DC-Motor schiebt Deckel zu (stoppt am Endschalter)
+9. CLOSE_LID       Magnet ZU (greifen). DC-Motor schiebt Deckel zu (stoppt am Endschalter)
 
 10. MEASURING      Wartet MEASURE_MS (Standard: 5000 ms) → Messung läuft im Dunkeln
 
@@ -34,7 +34,7 @@ Die Anlage ist ein automatisierter Messroboter für Lumineszenz-/Fluoreszenzmess
 
 12. LIFT_DOWN_RETRIEVE  Lift fährt runter in die Messkammer
 
-13. GRAB_AGAIN     Hubmagnet an → Vial greifen
+13. GRAB_AGAIN     Magnet bleibt ZU (unverändert) → Vial greifen
 
 14. LIFT_UP_RETURN Lift hoch mit Vial
 
@@ -43,11 +43,11 @@ Die Anlage ist ein automatisierter Messroboter für Lumineszenz-/Fluoreszenzmess
 
 16. LIFT_DOWN_RETURN  Vial in Startposition ablassen
 
-17. RELEASE_HOME   Magnet aus → Vial ist zurück im Revolver
+17. RELEASE_HOME   Magnet AUF (lösen) → Vial ist zurück im Revolver
 
 18. LIFT_UP_FINAL  Lift hoch (Parkposition)
 
-19. DONE           Vial-Zähler +1, Revolver dreht CW zur nächsten Vial-Position → weiter mit Schritt 2
+19. DONE           Magnet ZU (greifen). Vial-Zähler +1, Revolver dreht CW zur nächsten Vial-Position → weiter mit Schritt 2
 ```
 
 ### Revolver-Slot-Sequenz (zyklisch)
@@ -92,8 +92,13 @@ Die Anlage ist ein automatisierter Messroboter für Lumineszenz-/Fluoreszenzmess
 
 ### Hubmagnet
 - Datenblatt: 0.2–6.6 Nm, 12V DC, 2W
-- Active HIGH: `DigitalOut = 1` → Magnet angezogen → Vial gegriffen
-- Wartezeit nach An/Aus: 300 ms (`GRAB_WAIT_MS`)
+- Invertierte NPN-Treiberstufe: `grab()` = GPIO LOW = Magnet bestromt = **zu** (Vial gegriffen); `release()` = GPIO HIGH = stromlos = **auf**
+- **Persistenter Zustand:** Der Magnet wird ausschließlich beim Eintritt definierter States gesetzt und behält seinen Wert bis zur nächsten expliziten Änderung. In allen anderen States bleibt er unverändert (kein Puls, keine defensiven `release()`):
+  - **zu** (`grab()`): `HOMING`, `ROTATE_TO_VIAL`, `CLOSE_LID`, `DONE`
+  - **auf** (`release()`): `RELEASE`, `RELEASE_HOME`
+  - Folge: Magnet hält ab `HOMING` durchgehend das Vial (über `GRAB`/`LIFT_UP`/…), löst bei `RELEASE`, greift bei `CLOSE_LID` erneut, löst bei `RELEASE_HOME`, greift bei `DONE` für den Folgezyklus
+- Not-Aus: `stopAll()` (STOP/ERROR/IDLE) erzwingt `release()` als definierten sicheren Zustand
+- `GRAB_WAIT_MS` ist jetzt reine Verweilzeit in `GRAB`/`GRAB_AGAIN`/`RELEASE`/`RELEASE_HOME` (kein Magnet-Puls mehr)
 
 ---
 
@@ -276,7 +281,8 @@ Ohne `-I src/hw -I src/ui -I src/app` in `build_flags` findet der Compiler `#inc
 - [x] Kompilierfehler `ThreadFlag`, `const`-Fehler, `PESBoardPinMap` behoben
 - [x] `platformio.ini` mit korrekten Include-Pfaden
 - [x] **Hubmagnet funktionsfähig** – auf `PC_6` (`PB_D2`) umgezogen (PC_3/PC_8 als Analog-Input/Display-Pin untauglich). Hardware: invertierende NPN-Treiberstufe (BC547): GPIO→1 kΩ→Basis, 10 kΩ Basis-Pull-up auf +5 V, Collector→MOSFET-Gate, Gate-Pull-up 10 kΩ→+12 V, Freilaufdiode parallel zur Spule. **Logik invertiert** (`grab()` = GPIO LOW), zentral in `LiftMotor.cpp`. Verifiziert am Test-Branch `test/hubmagnet-pc3`.
-- [x] **Greifer-Ablauf: Puls statt Dauerstrom** – Magnet wird in `GRAB`/`GRAB_AGAIN`/`RELEASE`/`RELEASE_HOME` nur als kurzer Puls (`GRAB_WAIT_MS`) aktiviert, danach AUS. Alle Bewegungen (Lift hoch/runter, Revolver) laufen mit Magnet AUS = Greifer „zu" = kollisionsfrei. Hochfahr-Zustände rufen zusätzlich defensiv `release()` auf. (Bistabiler Latch: Puls greift/löst, hält stromlos.)
+- [x] ~~**Greifer-Ablauf: Puls statt Dauerstrom**~~ (abgelöst, s. nächster Punkt)
+- [x] **Greifer-Ablauf: persistenter Magnetzustand** – Magnet wird nur beim Eintritt von `HOMING`/`ROTATE_TO_VIAL`/`CLOSE_LID`/`DONE` (= zu, `grab()`) bzw. `RELEASE`/`RELEASE_HOME` (= auf, `release()`) gesetzt und bleibt sonst unverändert. Kein Puls, keine defensiven `release()` in Lift-/Homing-States mehr (vorhersehbares Verhalten). `stopAll()` behält `release()` als Not-Aus. `GRAB_WAIT_MS` = reine Verweilzeit.
 - [ ] **Restliche Pin-Belegung noch nicht final** – `RobotConfig.h` ggf. weiter an tatsächliche Verdrahtung anpassen (REV_STEP/DIR, LIFT_EN/REV_EN prüfen)
 - [ ] Display-Code noch nicht auf echter Hardware getestet
 - [ ] Touch-Controller XPT2046 noch nicht integriert (Klasse existiert im v2-Ordner, aber nicht im aktuellen Build)

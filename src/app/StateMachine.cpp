@@ -135,8 +135,8 @@ void StateMachine::handleHoming()
 {
     if (m_entry) {
         m_entry = false; m_leftPos = false;
-        printf("[SM] Homing...\n");
-        m_lift.release();
+        printf("[SM] Homing... (Magnet zu)\n");
+        m_lift.grab();                 // HOMING = zu
         m_lift.moveUp();
         m_revolver.turnCW();
     }
@@ -162,6 +162,7 @@ void StateMachine::handleRotateToVial()
     // Vial-Position angehalten.
     if (m_entry) {
         m_entry = false;
+        m_lift.grab();                 // ROTATE_TO_VIAL = zu
     }
     transitionTo(State::LIFT_DOWN_PICK);
 }
@@ -187,12 +188,9 @@ void StateMachine::handleGrab()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Magnet-Puls AN (Vial greifen)\n");
-        m_lift.grab();
+        printf("[SM] Vial greifen (Magnet unveraendert = zu)\n");
     }
     if (m_timerMs > RobotConfig::GRAB_WAIT_MS) {
-        m_lift.release();              // Puls beenden -> Magnet AUS vor jeder Bewegung
-        printf("[SM] Magnet AUS (Greifer zu, kollisionsfrei)\n");
         transitionTo(State::LIFT_UP);
     }
 }
@@ -201,7 +199,6 @@ void StateMachine::handleLiftUp()
 {
     if (m_entry) {
         m_entry = false; m_leftPos = false;
-        m_lift.release();              // Sicherheit: Greifer zu beim Hochfahren
         printf("[SM] Lift hoch\n");
         m_lift.moveUp();
     }
@@ -249,12 +246,10 @@ void StateMachine::handleRelease()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Magnet-Puls AN (Vial in Messanlage loesen)\n");
-        m_lift.grab();
+        printf("[SM] Vial in Messanlage loesen (Magnet auf)\n");
+        m_lift.release();              // RELEASE = auf
     }
     if (m_timerMs > RobotConfig::GRAB_WAIT_MS) {
-        m_lift.release();              // Puls beenden -> Magnet AUS vor jeder Bewegung
-        printf("[SM] Magnet AUS (Greifer zu, kollisionsfrei)\n");
         transitionTo(State::LIFT_UP_EMPTY);
     }
 }
@@ -263,7 +258,6 @@ void StateMachine::handleLiftUpEmpty()
 {
     if (m_entry) {
         m_entry = false; m_leftPos = false;
-        m_lift.release();              // Sicherheit: Greifer zu beim Hochfahren
         printf("[SM] Lift hoch (leer)\n");
         m_lift.moveUp();
     }
@@ -280,7 +274,8 @@ void StateMachine::handleCloseLid()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Deckel schliessen  openRot=%.3f\n", m_lid.getRotation());
+        printf("[SM] Deckel schliessen (Magnet zu)  openRot=%.3f\n", m_lid.getRotation());
+        m_lift.grab();                 // CLOSE_LID = zu
         m_lid.closeLid();
     }
     if (m_timerMs % 500 < RobotConfig::MAIN_PERIOD_MS)
@@ -342,12 +337,9 @@ void StateMachine::handleGrabAgain()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Magnet-Puls AN (Vial zurueckholen)\n");
-        m_lift.grab();
+        printf("[SM] Vial zurueckholen (Magnet unveraendert = zu)\n");
     }
     if (m_timerMs > RobotConfig::GRAB_WAIT_MS) {
-        m_lift.release();              // Puls beenden -> Magnet AUS vor dem Hochfahren
-        printf("[SM] Magnet AUS (Greifer zu, kollisionsfrei)\n");
         transitionTo(State::LIFT_UP_RETURN);
     }
 }
@@ -357,7 +349,6 @@ void StateMachine::handleLiftUpReturn()
     if (m_entry) {
         m_entry = false; m_leftPos = false;
         m_lift.resetTriggerCount();
-        m_lift.release();              // Sicherheit: Greifer zu beim Hochfahren n. Messung
         printf("[SM] Lift hoch (Vial zurueck)\n");
         m_lift.moveUp();
     }
@@ -405,12 +396,10 @@ void StateMachine::handleReleaseHome()
 {
     if (m_entry) {
         m_entry = false;
-        printf("[SM] Magnet-Puls AN (Vial in Startposition loesen)\n");
-        m_lift.grab();
+        printf("[SM] Vial in Startposition loesen (Magnet auf)\n");
+        m_lift.release();              // RELEASE_HOME = auf
     }
     if (m_timerMs > RobotConfig::GRAB_WAIT_MS) {
-        m_lift.release();              // Puls beenden -> Magnet AUS vor dem Hochfahren
-        printf("[SM] Magnet AUS (Greifer zu, kollisionsfrei)\n");
         transitionTo(State::LIFT_UP_FINAL);
     }
 }
@@ -419,7 +408,6 @@ void StateMachine::handleLiftUpFinal()
 {
     if (m_entry) {
         m_entry = false; m_leftPos = false;
-        m_lift.release();              // Sicherheit: Greifer zu beim Hochfahren
         printf("[SM] Lift hoch (final)\n");
         m_lift.moveUp();
     }
@@ -437,8 +425,9 @@ void StateMachine::handleDone()
     if (m_entry) {
         m_entry = false;
         m_vialIndex++;
-        printf("[SM] Zyklus %d abgeschlossen. Revolver -> naechstes Vial\n",
+        printf("[SM] Zyklus %d abgeschlossen (Magnet zu). Revolver -> naechstes Vial\n",
                m_vialIndex);
+        m_lift.grab();                 // DONE = zu
         m_revolver.resetTriggerCount();
         m_revolver.turnCW();
     }
